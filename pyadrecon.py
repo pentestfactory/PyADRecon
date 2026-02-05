@@ -16,7 +16,7 @@ import struct
 import ssl
 import re
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -189,14 +189,15 @@ def generalized_time_to_datetime(time_str: str) -> Optional[datetime]:
 
 
 def format_datetime(dt) -> str:
-    """Format datetime to match ADRecon output format (M/D/YYYY H:MM:SS AM/PM)."""
+    """Format datetime in UTC (M/D/YYYY H:MM:SS AM/PM).
+    All timestamps are displayed in UTC for consistency and timezone independence.
+    ldap3 returns datetime objects in UTC, which we format as-is.
+    """
     if dt is None:
         return ""
     # If it's already a datetime object from ldap3
     if isinstance(dt, datetime):
-        # ldap3 returns timestamps in UTC, convert to local timezone
-        if dt.tzinfo is not None:
-            dt = dt.astimezone()
+        # Format as-is in UTC, don't convert timezone
         return dt.strftime("%-m/%-d/%Y %-I:%M:%S %p")
     return ""
 
@@ -1255,7 +1256,7 @@ class PyADRecon:
         """Collect user objects."""
         logger.info("[-] Collecting Users - May take some time...")
         results = []
-        now = datetime.now()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         try:
             # Using (&(objectCategory=person)(objectClass=user)) instead of samAccountType
@@ -1290,14 +1291,15 @@ class PyADRecon:
                 pwd_not_changed_max = False
                 
                 if isinstance(pwd_last_set, datetime):
-                    # Convert timezone-aware datetime to naive for comparison
-                    pwd_last_set_dt = pwd_last_set.replace(tzinfo=None) if pwd_last_set.tzinfo else pwd_last_set
                     # Check if pwdLastSet is 0 (1601-01-01 epoch) which means "must change password at logon"
-                    if pwd_last_set_dt.year == 1601:
+                    if pwd_last_set.year == 1601:
                         must_change_pwd = True
                         pwd_last_set_dt = None  # Don't show the 1601 date
                     else:
-                        pwd_age_days = (now - pwd_last_set_dt).days
+                        pwd_last_set_dt = pwd_last_set
+                        # Calculate age in UTC
+                        pwd_last_set_utc = pwd_last_set.replace(tzinfo=None) if pwd_last_set.tzinfo else pwd_last_set
+                        pwd_age_days = (now - pwd_last_set_utc).days
                         if pwd_age_days > self.config.password_age_days:
                             pwd_not_changed_max = True
                 else:
@@ -1313,15 +1315,16 @@ class PyADRecon:
                 dormant = False
 
                 if isinstance(last_logon, datetime):
-                    # Convert timezone-aware datetime to naive for comparison
-                    last_logon_dt = last_logon.replace(tzinfo=None) if last_logon.tzinfo else last_logon
                     # Check if lastLogonTimestamp is 0 (1601-01-01 epoch) which means never logged in
-                    if last_logon_dt.year == 1601:
+                    if last_logon.year == 1601:
                         last_logon_dt = None
                         never_logged_in = True
                     else:
+                        last_logon_dt = last_logon
                         never_logged_in = False
-                        logon_age_days = (now - last_logon_dt).days
+                        # Calculate age in UTC
+                        last_logon_utc = last_logon.replace(tzinfo=None) if last_logon.tzinfo else last_logon
+                        logon_age_days = (now - last_logon_utc).days
                         if logon_age_days > self.config.dormant_days:
                             dormant = True
 
@@ -2166,7 +2169,7 @@ class PyADRecon:
         """Collect computer objects and service accounts (users ending in $)."""
         logger.info("[-] Collecting Computers - May take some time...")
         results = []
-        now = datetime.now()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         try:
             # Collect both computer objects AND user accounts ending in $ (service accounts)
@@ -2234,16 +2237,18 @@ class PyADRecon:
                 # ldap3 returns datetime objects for these attributes
                 pwd_last_set_dt = None
                 if isinstance(pwd_last_set, datetime):
-                    # Convert timezone-aware datetime to naive for comparison
-                    pwd_last_set_dt = pwd_last_set.replace(tzinfo=None) if pwd_last_set.tzinfo else pwd_last_set
                     # Check if pwdLastSet is 0 (1601-01-01 epoch) which means password never set
-                    if pwd_last_set_dt.year == 1601:
+                    if pwd_last_set.year == 1601:
                         pwd_last_set_dt = None
+                    else:
+                        pwd_last_set_dt = pwd_last_set
                 pwd_age_days = None
                 pwd_not_changed_max = False
 
                 if pwd_last_set_dt:
-                    pwd_age_days = (now - pwd_last_set_dt).days
+                    # Calculate age in UTC
+                    pwd_last_set_utc = pwd_last_set_dt.replace(tzinfo=None) if pwd_last_set_dt.tzinfo else pwd_last_set_dt
+                    pwd_age_days = (now - pwd_last_set_utc).days
                     if pwd_age_days > self.config.password_age_days:
                         pwd_not_changed_max = True
 
@@ -2252,16 +2257,18 @@ class PyADRecon:
                 # ldap3 returns datetime objects for these attributes
                 last_logon_dt = None
                 if isinstance(last_logon, datetime):
-                    # Convert timezone-aware datetime to naive for comparison
-                    last_logon_dt = last_logon.replace(tzinfo=None) if last_logon.tzinfo else last_logon
                     # Check if lastLogonTimestamp is 0 (1601-01-01 epoch) which means never logged in
-                    if last_logon_dt.year == 1601:
+                    if last_logon.year == 1601:
                         last_logon_dt = None
+                    else:
+                        last_logon_dt = last_logon
                 logon_age_days = None
                 dormant = False
 
                 if last_logon_dt:
-                    logon_age_days = (now - last_logon_dt).days
+                    # Calculate age in UTC
+                    last_logon_utc = last_logon_dt.replace(tzinfo=None) if last_logon_dt.tzinfo else last_logon_dt
+                    logon_age_days = (now - last_logon_utc).days
                     if logon_age_days > self.config.dormant_days:
                         dormant = True
 
