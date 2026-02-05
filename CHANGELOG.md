@@ -1,3 +1,10 @@
+## [0.2.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.1.5...v0.2.0) (2026-02-05)
+
+
+### Features
+
+* working docker image and versioned ci pipeline ([b370033](https://github.com/l4rm4nd/PyADRecon/commit/b37003380eb7297d769e3c570522ae8316b0e0dd))
+
 ## [0.1.5](https://github.com/l4rm4nd/PyADRecon/compare/v0.1.4...v0.1.5) (2026-02-05)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * adjust dockerfile, trigger ci ([3302466](https://github.com/l4rm4nd/PyADRecon/commit/3302466ad214bec55b01f412793ee36ed07f7946))
-
-## [0.1.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.1.0...v0.1.1) (2026-02-05)
-
-
-### Bug Fixes
-
-* fix dockerfile and trigger ci ([7dd905a](https://github.com/l4rm4nd/PyADRecon/commit/7dd905a4c947484086bf8737d96f4fd931d3dd12))
 
