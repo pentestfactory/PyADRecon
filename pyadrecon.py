@@ -194,6 +194,9 @@ def format_datetime(dt) -> str:
         return ""
     # If it's already a datetime object from ldap3
     if isinstance(dt, datetime):
+        # ldap3 returns timestamps in UTC, convert to local timezone
+        if dt.tzinfo is not None:
+            dt = dt.astimezone()
         return dt.strftime("%-m/%-d/%Y %-I:%M:%S %p")
     return ""
 
@@ -2638,7 +2641,7 @@ class PyADRecon:
             results.append({"Category": "Date", "Value": self.start_time.strftime("%m.%d.%Y %H:%M")})
             results.append({"Category": "GitHub Repository", "Value": "github.com/l4rm4nd/PyADRecon"})
             results.append({"Category": "Executed By", "Value": self.config.username if self.config.username else "Current User"})
-            results.append({"Category": "Executed From", "Value": f"{dn_to_fqdn(self.base_dn)}\\{local_computer} ({computer_type})"})
+            results.append({"Category": "Executed From", "Value": f"{local_computer} ({computer_type})"})
             results.append({"Category": "Execution Time", "Value": f"{duration_mins:.2f} minutes"})
             results.append({"Category": "Target Domain", "Value": dn_to_fqdn(self.base_dn)})
 
