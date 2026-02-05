@@ -58,7 +58,6 @@ except ImportError:
 try:
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from openpyxl.utils.dataframe import dataframe_to_rows
     OPENPYXL_AVAILABLE = True
 except ImportError:
     OPENPYXL_AVAILABLE = False
@@ -66,12 +65,14 @@ except ImportError:
 
 
 # Constants
-VERSION = "1.0.0"
+VERSION = "dev"  # Automatically updated by CI/CD pipeline during release
 BANNER = f"""
-╔═══════════════════════════════════════════════════════════╗
-║  PyADRecon v{VERSION} - Python AD Reconnaissance Tool      ║
-║  A Python implementation inspired by ADRecon              ║
-╚═══════════════════════════════════════════════════════════╝
+╔═════════════════════════════════════════════════════════
+║  PyADRecon {VERSION} - Python AD Reconnaissance Tool      
+║  A Python implementation inspired by ADRecon
+║  -------------------------------------------------------
+║  Author: LRVT - https://github.com/l4rm4nd/PyADRecon              
+╚═════════════════════════════════════════════════════════
 """
 
 # AD Constants
@@ -2649,7 +2650,6 @@ class PyADRecon:
 
     def run(self):
         """Run the AD reconnaissance."""
-        print(BANNER)
         logger.info(f"Starting PyADRecon at {self.start_time}")
         logger.info(f"Target: {self.config.domain_controller}")
         logger.info(f"Authentication: {self.config.auth_method.upper()}")
@@ -3300,6 +3300,10 @@ Examples:
         print("[!] ldap3 library required: pip install ldap3")
         print("[!] Install all dependencies: pip install -r requirements.txt")
         sys.exit(1)
+
+    # Display banner
+    print(BANNER)
+    sys.stdout.flush()
 
     # Parse collection modules
     collect_modules = args.collect.lower().split(',')

@@ -1,38 +1,41 @@
-FROM python:3.12.4-alpine
+FROM python:3.12.4-slim
 LABEL Maintainer="LRVT"
 
 # Install build dependencies for Python packages with C extensions
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    musl-dev \
     libffi-dev \
-    openssl-dev \
+    libssl-dev \
     python3-dev \
-    build-base \
+    build-essential \
     libxml2-dev \
-    libxslt-dev \
-    openssl
+    libxslt1-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Enable legacy OpenSSL algorithms (required for MD4/NTLM)
-RUN sed -i 's/\[openssl_init\]/[openssl_init]\nssl_conf = ssl_sect\n\n[ssl_sect]\nsystem_default = system_default_sect\n\n[system_default_sect]\nCipherString = DEFAULT@SECLEVEL=0/' /etc/ssl/openssl.cnf || \
-    echo -e '\n[openssl_init]\nssl_conf = ssl_sect\n\n[ssl_sect]\nsystem_default = system_default_sect\n\n[system_default_sect]\nCipherString = DEFAULT@SECLEVEL=0' >> /etc/ssl/openssl.cnf
+# Configure OpenSSL to enable legacy providers (required for MD4/NTLM)
+RUN mkdir -p /etc/ssl && \
+    cat > /etc/ssl/openssl.cnf <<EOF
+openssl_conf = openssl_init
 
-# Alternative: Create OpenSSL config to enable legacy providers (Python 3.12)
-RUN echo '[provider_sect]' > /etc/ssl/legacy.cnf && \
-    echo 'default = default_sect' >> /etc/ssl/legacy.cnf && \
-    echo 'legacy = legacy_sect' >> /etc/ssl/legacy.cnf && \
-    echo '[default_sect]' >> /etc/ssl/legacy.cnf && \
-    echo 'activate = 1' >> /etc/ssl/legacy.cnf && \
-    echo '[legacy_sect]' >> /etc/ssl/legacy.cnf && \
-    echo 'activate = 1' >> /etc/ssl/legacy.cnf
+[openssl_init]
+providers = provider_sect
+
+[provider_sect]
+default = default_sect
+legacy = legacy_sect
+
+[default_sect]
+activate = 1
+
+[legacy_sect]
+activate = 1
+EOF
 
 # Set environment variable to use legacy OpenSSL config
-ENV OPENSSL_CONF=/etc/ssl/legacy.cnf
+ENV OPENSSL_CONF=/etc/ssl/openssl.cnf
 
 COPY requirements.txt pyadrecon.py /app/
 RUN pip3 install --no-cache-dir -r /app/requirements.txt
 
 WORKDIR /app
 ENTRYPOINT ["python", "pyadrecon.py"]
-
-CMD ["python", "pyadrecon.py", "--help"]
