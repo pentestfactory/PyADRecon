@@ -1,3 +1,10 @@
+## [0.1.4](https://github.com/l4rm4nd/PyADRecon/compare/v0.1.3...v0.1.4) (2026-02-05)
+
+
+### Bug Fixes
+
+* dockerfile ([c36e4ca](https://github.com/l4rm4nd/PyADRecon/commit/c36e4ca009aea50dc292a74b9db4183f52021fdc))
+
 ## [0.1.3](https://github.com/l4rm4nd/PyADRecon/compare/v0.1.2...v0.1.3) (2026-02-05)
 
 
