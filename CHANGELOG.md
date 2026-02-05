@@ -1,3 +1,10 @@
+## [0.1.3](https://github.com/l4rm4nd/PyADRecon/compare/v0.1.2...v0.1.3) (2026-02-05)
+
+
+### Bug Fixes
+
+* make cell values left-aligned ([a5714d1](https://github.com/l4rm4nd/PyADRecon/commit/a5714d114dcad71d366d82ba06efec152cff6341))
+
 ## [0.1.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.1.1...v0.1.2) (2026-02-05)
 
 
