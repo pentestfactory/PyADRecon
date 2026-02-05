@@ -1,3 +1,10 @@
+## [0.2.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.0...v0.2.1) (2026-02-05)
+
+
+### Bug Fixes
+
+* pipeline to inject version into py script ([f48014d](https://github.com/l4rm4nd/PyADRecon/commit/f48014d7dfce162edfd69304d708ca7a6c7fce25))
+
 ## [0.2.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.1.5...v0.2.0) (2026-02-05)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * make cell values left-aligned ([a5714d1](https://github.com/l4rm4nd/PyADRecon/commit/a5714d114dcad71d366d82ba06efec152cff6341))
-
-## [0.1.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.1.1...v0.1.2) (2026-02-05)
-
-
-### Bug Fixes
-
-* adjust dockerfile, trigger ci ([3302466](https://github.com/l4rm4nd/PyADRecon/commit/3302466ad214bec55b01f412793ee36ed07f7946))
 
