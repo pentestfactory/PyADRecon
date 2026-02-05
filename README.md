@@ -59,7 +59,7 @@ Examples:
 There is also a Docker image available on GHCR.IO.
 
 ````
-docker run --rm -v ./:/tmp/adrecon_output ghcr.io/l4rm4nd/pyadrecon:0.1.x -dc 192.168.1.1 -u admin -p pass -d DOMAIN.LOCAL -o /tmp/adrecon_output
+docker run --rm -v ./:/tmp/pyadrecon_output ghcr.io/l4rm4nd/pyadrecon -dc 192.168.1.1 -u admin -p pass -d DOMAIN.LOCAL -o /tmp/pyadrecon_output
 ````
 
 ## Acknowledgements
