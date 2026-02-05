@@ -1,3 +1,10 @@
+## [0.1.5](https://github.com/l4rm4nd/PyADRecon/compare/v0.1.4...v0.1.5) (2026-02-05)
+
+
+### Bug Fixes
+
+* dns record parsing ([35a8828](https://github.com/l4rm4nd/PyADRecon/commit/35a8828ea5ca06d66d8171c191aeaa5c15df28e0))
+
 ## [0.1.4](https://github.com/l4rm4nd/PyADRecon/compare/v0.1.3...v0.1.4) (2026-02-05)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * fix dockerfile and trigger ci ([7dd905a](https://github.com/l4rm4nd/PyADRecon/commit/7dd905a4c947484086bf8737d96f4fd931d3dd12))
-
-## [0.1.0](https://github.com/l4rm4nd/PyADRecon/compare/9ec03f33c7d0d56d2aed66454e4cab3edb9115c1...v0.1.0) (2026-02-05)
-
-
-### Bug Fixes
-
-* add requirements and trigger ci ([9ec03f3](https://github.com/l4rm4nd/PyADRecon/commit/9ec03f33c7d0d56d2aed66454e4cab3edb9115c1))
 
