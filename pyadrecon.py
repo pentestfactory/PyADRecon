@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """
 PyADRecon - Python Active Directory Reconnaissance Tool
@@ -2101,6 +2100,7 @@ class PyADRecon:
         results = []
 
         try:
+            # Collect computer objects
             filter_str = "(&(objectCategory=computer)(servicePrincipalName=*))"
             if self.config.only_enabled:
                 filter_str = "(&(objectCategory=computer)(servicePrincipalName=*)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
@@ -2111,10 +2111,26 @@ class PyADRecon:
                 ['name', 'sAMAccountName', 'servicePrincipalName']
             )
 
+            # Also collect Managed Service Accounts (MSAs)
+            msa_filter = "(objectClass=msDS-ManagedServiceAccount)"
+            if self.config.only_enabled:
+                msa_filter = "(&(objectClass=msDS-ManagedServiceAccount)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
+            
+            msa_entries = self.search(
+                self.base_dn,
+                msa_filter,
+                ['name', 'sAMAccountName', 'servicePrincipalName']
+            )
+
+            # Combine both result sets
+            all_entries = list(entries) if entries else []
+            if msa_entries:
+                all_entries.extend(msa_entries)
+
             # Group SPNs by (UserName, Name, Service) and collect hosts
             grouped_spns = {}
             
-            for entry in entries:
+            for entry in all_entries:
                 spns = get_attr_list(entry, 'servicePrincipalName')
                 sam_account = get_attr(entry, 'sAMAccountName', '')
                 computer_name = get_attr(entry, 'name', '')
@@ -2615,6 +2631,14 @@ class PyADRecon:
                 record_count = len(data)
                 logger.info(f"    [{current_sheet}/{total_sheets}] Writing {name} ({record_count:,} records)...")
 
+                # Sort data by first column alphabetically (case-insensitive)
+                if data and len(data) > 0:
+                    first_key = list(data[0].keys())[0]
+                    try:
+                        data = sorted(data, key=lambda x: str(x.get(first_key, '')).lower())
+                    except Exception as e:
+                        logger.debug(f"Could not sort {name} by {first_key}: {e}")
+
                 # Use friendly name if available, otherwise use original name
                 display_name = SHEET_NAME_MAPPING.get(name, name)
                 ws = wb.create_sheet(display_name[:31])  # Excel sheet name limit
@@ -2861,9 +2885,8 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
                 except StopIteration:
                     continue  # Empty file
 
-                # Write data rows
-                batch_size = 10000
-                row_num = 0
+                # Read all data rows into memory for sorting
+                all_rows = []
                 for row in reader:
                     # Convert empty strings and handle encoding
                     clean_row = []
@@ -2879,8 +2902,18 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
                                     clean_row.append(int(val))
                             except ValueError:
                                 clean_row.append(val)
+                    all_rows.append(clean_row)
+                
+                # Sort by first column (case-insensitive string comparison)
+                try:
+                    all_rows.sort(key=lambda x: str(x[0]).lower() if len(x) > 0 else '')
+                except Exception as e:
+                    logger.debug(f"Could not sort {csv_file}: {e}")
+                
+                # Write sorted data rows
+                batch_size = 10000
+                for row_num, clean_row in enumerate(all_rows, 1):
                     ws.append(clean_row)
-                    row_num += 1
 
                     # Progress for large files
                     if record_count > batch_size and row_num % batch_size == 0:
