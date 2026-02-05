@@ -56,6 +56,14 @@ Examples:
   pyadrecon.py --generate-excel-from /path/to/CSV-Files -o report.xlsx
 ````
 
+## Docker
+
+There is also a Docker image available on GHCR.IO.
+
+````
+docker pull ghcr.io/l4rm4nd/pyadrecon:0.1.x -h
+````
+
 ## Acknowledgements
 
 Many thanks to [S3cur3Th1sSh1t](https://github.com/S3cur3Th1sSh1t/AI-Coded-scripts) and Claude for a first version.
