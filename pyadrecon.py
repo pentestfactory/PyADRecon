@@ -1846,9 +1846,209 @@ class PyADRecon:
         return results
 
     def collect_dns_records(self) -> List[Dict]:
-        """Collect DNS records."""
+        """Collect DNS records with full parsing."""
         logger.info("[-] Collecting DNS Records - May take some time...")
         results = []
+
+        def parse_dns_record(record_bytes):
+            """Parse DNS record from binary format."""
+            if not isinstance(record_bytes, bytes) or len(record_bytes) < 24:
+                return None
+            
+            try:
+                # DNS record header structure
+                data_length = struct.unpack('<H', record_bytes[0:2])[0]
+                record_type = struct.unpack('<H', record_bytes[2:4])[0]
+                version = struct.unpack('B', record_bytes[4:5])[0]
+                rank = struct.unpack('B', record_bytes[5:6])[0]
+                flags = struct.unpack('<H', record_bytes[6:8])[0]
+                serial = struct.unpack('<I', record_bytes[8:12])[0]
+                ttl_seconds = struct.unpack('<I', record_bytes[12:16])[0]
+                reserved = struct.unpack('<I', record_bytes[16:20])[0]
+                timestamp = struct.unpack('<I', record_bytes[20:24])[0]
+                
+                # Calculate age from timestamp (hours since 1/1/1601)
+                age = timestamp
+                
+                # Format timestamp
+                if timestamp == 0:
+                    timestamp_str = "[static]"
+                else:
+                    try:
+                        # Windows timestamp: hours since 1/1/1601
+                        base = datetime(1601, 1, 1)
+                        ts_datetime = base + timedelta(hours=timestamp)
+                        timestamp_str = ts_datetime.strftime('%m/%d/%Y %I:%M:%S %p')
+                    except:
+                        timestamp_str = "[static]"
+                
+                record_data = record_bytes[24:]
+                data_str = ""
+                type_name = ""
+                
+                # Parse different record types
+                if record_type == 1:  # A record
+                    type_name = "A"
+                    if len(record_data) >= 4:
+                        data_str = '.'.join(str(b) for b in record_data[0:4])
+                
+                elif record_type == 2:  # NS record
+                    type_name = "NS"
+                    # NS records have 2-byte header before the name
+                    data_str, _ = parse_dns_name(record_data, 2)
+                
+                elif record_type == 5:  # CNAME record
+                    type_name = "CNAME"
+                    # CNAME records have 2-byte header before the name
+                    data_str, _ = parse_dns_name(record_data, 2)
+                
+                elif record_type == 6:  # SOA record
+                    type_name = "SOA"
+                    # SOA structure in MS DNS: serial(4), refresh(4), retry(4), expire(4), minimum(4), then names
+                    # Total 20 bytes of integers, then 2-byte header, primary NS, 2-byte header, admin email
+                    if len(record_data) >= 20:
+                        soa_serial = struct.unpack('>I', record_data[0:4])[0]
+                        refresh = struct.unpack('>I', record_data[4:8])[0]
+                        retry = struct.unpack('>I', record_data[8:12])[0]
+                        expire = struct.unpack('>I', record_data[12:16])[0]
+                        minimum = struct.unpack('>I', record_data[16:20])[0]
+                        # Primary NS starts at offset 22 (after 20 bytes + 2-byte header)
+                        primary_ns, offset = parse_dns_name(record_data, 22)
+                        # Admin email has 2-byte header before it
+                        admin_email, offset = parse_dns_name(record_data, offset + 2)
+                        data_str = f"[{soa_serial}][{primary_ns}][{admin_email}][{refresh}][{retry}][{expire}][{minimum}]"
+                
+                elif record_type == 12:  # PTR record
+                    type_name = "PTR"
+                    # PTR records have 2-byte header before the name
+                    data_str, _ = parse_dns_name(record_data, 2)
+                
+                elif record_type == 15:  # MX record
+                    type_name = "MX"
+                    if len(record_data) >= 2:
+                        preference = struct.unpack('>H', record_data[0:2])[0]
+                        exchange, _ = parse_dns_name(record_data, 2)
+                        data_str = f"[{preference}][{exchange}]"
+                
+                elif record_type == 16:  # TXT record
+                    type_name = "TXT"
+                    if len(record_data) > 0:
+                        txt_len = record_data[0]
+                        if len(record_data) >= txt_len + 1:
+                            data_str = record_data[1:txt_len+1].decode('utf-8', errors='ignore')
+                
+                elif record_type == 28:  # AAAA record (IPv6)
+                    type_name = "AAAA"
+                    if len(record_data) >= 16:
+                        ipv6_parts = []
+                        for i in range(0, 16, 2):
+                            part = struct.unpack('>H', record_data[i:i+2])[0]
+                            ipv6_parts.append(f"{part:04x}")
+                        data_str = ':'.join(ipv6_parts)
+                
+                elif record_type == 33:  # SRV record
+                    type_name = "SRV"
+                    if len(record_data) >= 8:
+                        priority = struct.unpack('>H', record_data[0:2])[0]
+                        weight = struct.unpack('>H', record_data[2:4])[0]
+                        port = struct.unpack('>H', record_data[4:6])[0]
+                        # SRV records have the 6-byte fixed header, then 2-byte header before DNS name
+                        target, _ = parse_dns_name(record_data, 8)
+                        data_str = f"[{priority}][{weight}][{port}][{target}]"
+                
+                else:
+                    type_name = f"TYPE{record_type}"
+                    data_str = record_data.hex() if record_data else ""
+                
+                return {
+                    'RecordType': type_name,
+                    'Data': data_str,
+                    'TTL': ttl_seconds,
+                    'Age': age,
+                    'TimeStamp': timestamp_str,
+                    'UpdatedAtSerial': serial
+                }
+                
+            except Exception as e:
+                logger.debug(f"Error parsing DNS record: {e}")
+                return None
+        
+        def parse_dns_name(data, offset=0):
+            """Parse DNS name from record data in label format."""
+            if not data or offset >= len(data):
+                return "", offset
+            
+            try:
+                name_parts = []
+                jumped = False
+                saved_offset = 0
+                
+                while offset < len(data):
+                    if offset >= len(data):
+                        break
+                    
+                    length = data[offset]
+                    
+                    # End of name
+                    if length == 0:
+                        offset += 1
+                        break
+                    
+                    # Compression pointer (starts with 11 in top 2 bits)
+                    if length >= 0xC0:
+                        if not jumped:
+                            saved_offset = offset + 2
+                        if offset + 1 < len(data):
+                            # Get the pointer offset
+                            pointer = struct.unpack('>H', data[offset:offset+2])[0] & 0x3FFF
+                            # Recursively parse the name at the pointer location
+                            pointed_name, _ = parse_dns_name(data, pointer)
+                            if pointed_name and pointed_name != '.':
+                                name_parts.append(pointed_name.rstrip('.'))
+                            jumped = True
+                            offset = saved_offset
+                        break
+                    
+                    # Regular label - read length-prefixed string
+                    offset += 1
+                    if offset + length > len(data):
+                        break
+                    
+                    # Read the label bytes and decode
+                    label_bytes = data[offset:offset+length]
+                    try:
+                        label = label_bytes.decode('ascii', errors='replace')
+                        # Remove any non-printable characters but preserve the text
+                        label = ''.join(c for c in label if c.isprintable() or c in '.-_')
+                        if label:
+                            name_parts.append(label)
+                    except:
+                        pass
+                    
+                    offset += length
+                
+                if jumped and saved_offset > 0:
+                    offset = saved_offset
+                
+                result = '.'.join(name_parts)
+                if result and not result.endswith('.'):
+                    result += '.'
+                return result, offset
+                
+            except Exception as e:
+                logger.debug(f"Error parsing DNS name: {e}")
+                return "", offset
+        
+        def sanitize_value(value):
+            """Sanitize value for Excel - remove illegal characters."""
+            if isinstance(value, str):
+                # Remove control characters (0x00-0x1F except tab, newline, carriage return)
+                # Also remove 0x7F-0x9F
+                sanitized = ''.join(char for char in value if ord(char) >= 32 or char in '\t\n\r')
+                # Remove any remaining problematic characters
+                sanitized = sanitized.replace('\x00', '').replace('\x0b', '').replace('\x0c', '')
+                return sanitized
+            return value
 
         try:
             # Get DNS records from each zone
@@ -1856,6 +2056,7 @@ class PyADRecon:
                 self.collect_dns_zones()
 
             for zone in self.results.get('DNSZones', []):
+                zone_name = zone.get('Name', '')
                 zone_dn = zone.get('DistinguishedName', '')
                 if not zone_dn:
                     continue
@@ -1864,19 +2065,56 @@ class PyADRecon:
                     entries = self.search(
                         zone_dn,
                         "(objectCategory=dnsNode)",
-                        ['name', 'dnsRecord', 'dNSTombstoned', 'whenCreated', 'whenChanged']
+                        ['name', 'dnsRecord', 'dNSTombstoned', 'whenCreated', 'whenChanged',
+                         'showInAdvancedViewOnly', 'distinguishedName']
                     )
 
                     for entry in entries:
-                        results.append({
-                            "Zone": zone.get('Name', ''),
-                            "Name": get_attr(entry, 'name', ''),
-                            "Tombstoned": str(get_attr(entry, 'dNSTombstoned', '')),
-                            "whenCreated": format_datetime(get_attr(entry, 'whenCreated')),
-                            "whenChanged": format_datetime(get_attr(entry, 'whenChanged')),
-                        })
-                except Exception:
-                    pass
+                        name = get_attr(entry, 'name', '')
+                        dns_records = get_attr_list(entry, 'dnsRecord')
+                        tombstoned = get_attr(entry, 'dNSTombstoned', False)
+                        when_created = format_datetime(get_attr(entry, 'whenCreated'))
+                        when_changed = format_datetime(get_attr(entry, 'whenChanged'))
+                        show_advanced = str(get_attr(entry, 'showInAdvancedViewOnly', 'TRUE')).upper()
+                        dn = get_attr(entry, 'distinguishedName', '')
+                        
+                        # Parse each DNS record (can be multiple per node)
+                        if dns_records:
+                            for record_bytes in dns_records:
+                                parsed = parse_dns_record(record_bytes)
+                                if parsed:
+                                    results.append({
+                                        "ZoneName": sanitize_value(zone_name),
+                                        "Name": sanitize_value(name),
+                                        "RecordType": sanitize_value(parsed['RecordType']),
+                                        "Data": sanitize_value(parsed['Data']),
+                                        "TTL": parsed['TTL'],
+                                        "Age": parsed['Age'],
+                                        "TimeStamp": sanitize_value(parsed['TimeStamp']),
+                                        "UpdatedAtSerial": parsed['UpdatedAtSerial'],
+                                        "whenCreated": sanitize_value(when_created),
+                                        "whenChanged": sanitize_value(when_changed),
+                                        "showInAdvancedViewOnly": sanitize_value(show_advanced),
+                                        "DistinguishedName": sanitize_value(dn)
+                                    })
+                        else:
+                            # No DNS records, but still add the node
+                            results.append({
+                                "ZoneName": sanitize_value(zone_name),
+                                "Name": sanitize_value(name),
+                                "RecordType": "",
+                                "Data": "",
+                                "TTL": "",
+                                "Age": "",
+                                "TimeStamp": "",
+                                "UpdatedAtSerial": "",
+                                "whenCreated": sanitize_value(when_created),
+                                "whenChanged": sanitize_value(when_changed),
+                                "showInAdvancedViewOnly": sanitize_value(show_advanced),
+                                "DistinguishedName": sanitize_value(dn)
+                            })
+                except Exception as e:
+                    logger.debug(f"Error processing zone {zone_name}: {e}")
 
         except Exception as e:
             logger.warning(f"Error collecting DNS records: {e}")
