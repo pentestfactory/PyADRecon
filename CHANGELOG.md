@@ -1,3 +1,10 @@
+## [0.2.4](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.3...v0.2.4) (2026-02-05)
+
+
+### Bug Fixes
+
+* UTC timezone parsing ([72615a4](https://github.com/l4rm4nd/PyADRecon/commit/72615a4f09bfb3aa11bdc4e9becfafe1b722180d))
+
 ## [0.2.3](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.2...v0.2.3) (2026-02-05)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * working docker image and versioned ci pipeline ([b370033](https://github.com/l4rm4nd/PyADRecon/commit/b37003380eb7297d769e3c570522ae8316b0e0dd))
-
-## [0.1.5](https://github.com/l4rm4nd/PyADRecon/compare/v0.1.4...v0.1.5) (2026-02-05)
-
-
-### Bug Fixes
-
-* dns record parsing ([35a8828](https://github.com/l4rm4nd/PyADRecon/commit/35a8828ea5ca06d66d8171c191aeaa5c15df28e0))
 
