@@ -61,7 +61,7 @@ Examples:
 There is also a Docker image available on GHCR.IO.
 
 ````
-docker pull ghcr.io/l4rm4nd/pyadrecon:0.1.x -h
+docker pull ghcr.io/l4rm4nd/pyadrecon -h
 ````
 
 ## Acknowledgements
