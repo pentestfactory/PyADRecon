@@ -4,10 +4,8 @@ Python3 implementation of [ADRecon](https://github.com/sense-of-security/ADRecon
 ## Usage
 
 ````py
-usage: pyadrecon.py [-h] [--generate-excel-from CSV_DIR] [-dc DOMAIN_CONTROLLER] [-u USERNAME] [-p PASSWORD]
-                    [-d DOMAIN] [--auth {ntlm,kerberos}] [--ssl] [--port PORT] [-o OUTPUT]
-                    [--page-size PAGE_SIZE] [--threads THREADS] [--dormant-days DORMANT_DAYS]
-                    [--password-age PASSWORD_AGE] [--only-enabled] [--collect COLLECT] [--no-excel] [-v]
+usage: pyadrecon.py [-h] [--generate-excel-from CSV_DIR] [-dc DOMAIN_CONTROLLER] [-u USERNAME] [-p PASSWORD] [-d DOMAIN] [--auth {ntlm,kerberos}] [--ssl] [--port PORT] [-o OUTPUT]
+                    [--page-size PAGE_SIZE] [--threads THREADS] [--dormant-days DORMANT_DAYS] [--password-age PASSWORD_AGE] [--only-enabled] [--collect COLLECT] [--no-excel] [-v]
 
 PyADRecon - Python Active Directory Reconnaissance Tool
 
@@ -61,7 +59,7 @@ Examples:
 There is also a Docker image available on GHCR.IO.
 
 ````
-docker pull ghcr.io/l4rm4nd/pyadrecon -h
+docker run --rm -v ./:/tmp/adrecon_output ghcr.io/l4rm4nd/pyadrecon:0.1.x -dc 192.168.1.1 -u admin -p pass -d DOMAIN.LOCAL -o /tmp/adrecon_output
 ````
 
 ## Acknowledgements
