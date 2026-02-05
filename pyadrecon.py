@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 PyADRecon - Python Active Directory Reconnaissance Tool
@@ -2557,6 +2558,7 @@ class PyADRecon:
             # Define styles for headers
             header_font = Font(bold=True, color="FFFFFF")
             header_fill = PatternFill(start_color="0066CC", end_color="0066CC", fill_type="solid")
+            left_alignment = Alignment(horizontal='left', vertical='top')
 
             # Track column widths for auto-sizing later
             column_widths = {}
@@ -2632,6 +2634,7 @@ class PyADRecon:
                     cell = WriteOnlyCell(ws, value=header)
                     cell.font = header_font
                     cell.fill = header_fill
+                    cell.alignment = left_alignment
                     header_row.append(cell)
                 ws.append(header_row)
 
@@ -2682,7 +2685,7 @@ class PyADRecon:
             
             wb = load_workbook(filename)
             
-            # Apply column widths and filters to each sheet
+            # Apply column widths, alignment, and filters to each sheet
             for sheet_name, widths in column_widths.items():
                 if sheet_name in wb.sheetnames:
                     ws = wb[sheet_name]
@@ -2694,6 +2697,11 @@ class PyADRecon:
                         adjusted_width = min(width + 2, 100)
                         column_letter = get_column_letter(col_idx + 1)
                         ws.column_dimensions[column_letter].width = adjusted_width
+                    
+                    # Apply left alignment to all cells
+                    for row in ws.iter_rows():
+                        for cell in row:
+                            cell.alignment = Alignment(horizontal='left', vertical='top')
                     
                     # Add auto-filter to header row
                     if ws.max_row > 0 and ws.max_column > 0:
@@ -2796,6 +2804,7 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
         # Define styles
         header_font = Font(bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="0066CC", end_color="0066CC", fill_type="solid")
+        left_alignment = Alignment(horizontal='left', vertical='top')
 
         # Build TOC data
         toc_data = [
@@ -2846,6 +2855,7 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
                         cell = WriteOnlyCell(ws, value=header)
                         cell.font = header_font
                         cell.fill = header_fill
+                        cell.alignment = left_alignment
                         header_row.append(cell)
                     ws.append(header_row)
                 except StopIteration:
@@ -2899,6 +2909,12 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
         for sheet_name in wb.sheetnames:
             if sheet_name != "Table of Contents":  # Skip TOC
                 ws = wb[sheet_name]
+                
+                # Apply left alignment to all cells
+                for row in ws.iter_rows():
+                    for cell in row:
+                        cell.alignment = Alignment(horizontal='left', vertical='top')
+                
                 if ws.max_row > 0 and ws.max_column > 0:
                     ws.auto_filter.ref = ws.dimensions
         
