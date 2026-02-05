@@ -2634,12 +2634,13 @@ class PyADRecon:
             except:
                 pass
 
+            results.append({"Category": "PyADRecon Version", "Value": VERSION})
             results.append({"Category": "Date", "Value": self.start_time.strftime("%m.%d.%Y %H:%M")})
-            results.append({"Category": "ADRecon", "Value": "github.com/l4rm4nd/PyADRecon"})
-            results.append({"Category": "LDAP Version", "Value": "v1.27"})
-            results.append({"Category": "Ran as user", "Value": self.config.username if self.config.username else "Current User"})
-            results.append({"Category": "Ran on computer", "Value": f"{dn_to_fqdn(self.base_dn)}\\{local_computer} - {computer_type}"})
-            results.append({"Category": "Execution Time (mins)", "Value": f"{duration_mins:.2f}"})
+            results.append({"Category": "GitHub Repository", "Value": "github.com/l4rm4nd/PyADRecon"})
+            results.append({"Category": "Executed By", "Value": self.config.username if self.config.username else "Current User"})
+            results.append({"Category": "Executed From", "Value": f"{dn_to_fqdn(self.base_dn)}\\{local_computer} ({computer_type})"})
+            results.append({"Category": "Execution Time", "Value": f"{duration_mins:.2f} minutes"})
+            results.append({"Category": "Target Domain", "Value": dn_to_fqdn(self.base_dn)})
 
         except Exception as e:
             logger.warning(f"Error collecting about info: {e}")
@@ -2825,14 +2826,7 @@ class PyADRecon:
                 [""],
                 ["Sheet Name", "Record Count"],
             ]
-            for name in self.results.keys():
-                if self.results[name]:
-                    toc_data.append([name, len(self.results[name])])
-
-            toc_ws = wb.create_sheet("Table of Contents")
-            for row in toc_data:
-                toc_ws.append(row)
-
+            
             # Define sheet order to match ADRecon
             SHEET_ORDER = [
                 'Users', 'UserSPNs', 'GroupMembers', 'Groups', 'OUs', 'Computers',
@@ -2845,6 +2839,31 @@ class PyADRecon:
             SHEET_NAME_MAPPING = {
                 'AboutPyADRecon': 'About PyADRecon'
             }
+            
+            for name in SHEET_ORDER:
+                if name in self.results and self.results[name]:
+                    friendly_name = SHEET_NAME_MAPPING.get(name, name)
+                    toc_data.append([friendly_name, len(self.results[name])])
+
+            toc_ws = wb.create_sheet("Table of Contents")
+            
+            # Write headers
+            for row in toc_data[:5]:  # First 5 rows (title, date, domain, blank, headers)
+                toc_ws.append(row)
+            
+            # Write sheet names with hyperlinks (in write_only mode, we need to use WriteOnlyCell)
+            for row_data in toc_data[5:]:
+                sheet_name = row_data[0]
+                record_count = row_data[1]
+                
+                # Create cell with hyperlink
+                name_cell = WriteOnlyCell(toc_ws, value=sheet_name)
+                name_cell.hyperlink = f"#'{sheet_name}'!A1"
+                name_cell.font = Font(color="0563C1", underline="single")
+                
+                count_cell = WriteOnlyCell(toc_ws, value=record_count)
+                
+                toc_ws.append([name_cell, count_cell])
             
             # Order sheets according to SHEET_ORDER, then add any remaining
             ordered_names = []

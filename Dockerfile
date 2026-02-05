@@ -1,7 +1,7 @@
-FROM python:3.12.4-slim
-LABEL Maintainer="LRVT"
+# Build stage
+FROM python:3.12.4-slim AS builder
 
-# Install build dependencies for Python packages with C extensions
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libffi-dev \
@@ -10,6 +10,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libxml2-dev \
     libxslt1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages
+COPY requirements.txt /tmp/
+RUN pip3 install --no-cache-dir --prefix=/install -r /tmp/requirements.txt
+
+# Runtime stage
+FROM python:3.12.4-slim
+LABEL Maintainer="LRVT"
+
+# Install only runtime libraries (not build tools)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libffi8 \
+    libssl3 \
+    libxml2 \
+    libxslt1.1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure OpenSSL to enable legacy providers (required for MD4/NTLM)
@@ -34,8 +50,11 @@ EOF
 # Set environment variable to use legacy OpenSSL config
 ENV OPENSSL_CONF=/etc/ssl/openssl.cnf
 
-COPY requirements.txt pyadrecon.py /app/
-RUN pip3 install --no-cache-dir -r /app/requirements.txt
+# Copy Python packages from builder
+COPY --from=builder /install /usr/local
+
+# Copy application
+COPY pyadrecon.py /app/
 
 WORKDIR /app
 ENTRYPOINT ["python", "pyadrecon.py"]
