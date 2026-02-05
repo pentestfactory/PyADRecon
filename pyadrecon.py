@@ -65,7 +65,7 @@ except ImportError:
 
 
 # Constants
-VERSION = "dev"  # Automatically updated by CI/CD pipeline during release
+VERSION = "v0.2.2"  # Automatically updated by CI/CD pipeline during release
 BANNER = f"""
 ╔═════════════════════════════════════════════════════════
 ║  PyADRecon {VERSION} - Python AD Reconnaissance Tool      
