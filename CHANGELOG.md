@@ -1,3 +1,10 @@
+## [0.2.5](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.4...v0.2.5) (2026-02-05)
+
+
+### Bug Fixes
+
+* use UTC timezone universally ([2c207fc](https://github.com/l4rm4nd/PyADRecon/commit/2c207fce14ac9037e09c0a6c86788a16dbe68e95))
+
 ## [0.2.4](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.3...v0.2.4) (2026-02-05)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * pipeline to inject version into py script ([f48014d](https://github.com/l4rm4nd/PyADRecon/commit/f48014d7dfce162edfd69304d708ca7a6c7fce25))
-
-## [0.2.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.1.5...v0.2.0) (2026-02-05)
-
-
-### Features
-
-* working docker image and versioned ci pipeline ([b370033](https://github.com/l4rm4nd/PyADRecon/commit/b37003380eb7297d769e3c570522ae8316b0e0dd))
 
