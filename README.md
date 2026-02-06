@@ -4,6 +4,19 @@ Python3 implementation of [ADRecon](https://github.com/sense-of-security/ADRecon
 
 > ADRecon is a tool which gathers information about MS Active Directory and generates an XSLX report to provide a holistic picture of the current state of the target AD environment.
 
+## Installation
+
+````bash
+# clone the repo
+git clone https://github.com/l4rm4nd/PyADRecon && cd PyADRecon
+
+# create virtual environment
+virtualenv venv && source venv/bin/activate
+
+# installd dependencies
+pip install -r requirements.txt
+````
+
 ## Usage
 
 ````py
