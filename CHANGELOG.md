@@ -1,3 +1,10 @@
+## [0.4.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.3.1...v0.4.0) (2026-02-06)
+
+
+### Features
+
+* support passing tgt for kerberos auth ([cf10787](https://github.com/l4rm4nd/PyADRecon/commit/cf10787e5c4b958c1656d6bb4f13ffacb3e1f4f4))
+
 ## [0.3.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.3.0...v0.3.1) (2026-02-06)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * always try ldaps first + adjust password age threshold ([f3b6c1c](https://github.com/l4rm4nd/PyADRecon/commit/f3b6c1c2f632d3d8ca0ead344639674e799ea8d7))
-
-## [0.2.6](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.5...v0.2.6) (2026-02-06)
-
-
-### Bug Fixes
-
-* remove obsolete collection methods ([8adbeb9](https://github.com/l4rm4nd/PyADRecon/commit/8adbeb944f50a537302dc8c26b88c7c04a1118eb))
 
