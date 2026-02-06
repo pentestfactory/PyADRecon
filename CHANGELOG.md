@@ -1,3 +1,10 @@
+## [0.5.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.1...v0.5.2) (2026-02-06)
+
+
+### Bug Fixes
+
+* toc, about and printer tab ([f4d9ac5](https://github.com/l4rm4nd/PyADRecon/commit/f4d9ac5cabb92c986835c4d92fab405113d96c71))
+
 ## [0.5.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.0...v0.5.1) (2026-02-06)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * adjust dockerfile for kerberos ([cdcf62d](https://github.com/l4rm4nd/PyADRecon/commit/cdcf62d92bd6035b256f62150f6d70e07e850ab6))
-
-## [0.3.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.8...v0.3.0) (2026-02-06)
-
-
-### Features
-
-* fix kerbeos auth and ldap channel binding ([9da2e05](https://github.com/l4rm4nd/PyADRecon/commit/9da2e0566191c1fda0ccf662189c86773ce29228))
 
