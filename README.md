@@ -25,7 +25,7 @@ pip install -r requirements.txt
 >If flag `--ssl` is not used, LDAP on TCP/389 may be tried as fallback.
 
 >[!WARNING]
->If LDAP channel binding is enabled, this script will fail with `automatic bind not successful - strongerAuthRequired`, as ldap3 does not support it. You must use Kerberos authentication instead.
+>If LDAP channel binding is enabled, this script will fail with `automatic bind not successful - strongerAuthRequired`, as ldap3 does not support it (see [here](https://github.com/cannatag/ldap3/issues/1049#issuecomment-1222826803)). You must use Kerberos authentication instead.
 >
 >If you use Kerberos auth, please create a valid `/etc/krb5.conf` and DC hostname entry in `/etc/hosts`. May read [this](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=32628#KerberosClientConfiguration-*NIX/etc/krb5.confConfiguration).
 >
