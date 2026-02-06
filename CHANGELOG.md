@@ -1,3 +1,10 @@
+## [0.3.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.8...v0.3.0) (2026-02-06)
+
+
+### Features
+
+* fix kerbeos auth and ldap channel binding ([9da2e05](https://github.com/l4rm4nd/PyADRecon/commit/9da2e0566191c1fda0ccf662189c86773ce29228))
+
 ## [0.2.8](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.7...v0.2.8) (2026-02-06)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * use UTC timezone universally ([2c207fc](https://github.com/l4rm4nd/PyADRecon/commit/2c207fce14ac9037e09c0a6c86788a16dbe68e95))
-
-## [0.2.4](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.3...v0.2.4) (2026-02-05)
-
-
-### Bug Fixes
-
-* UTC timezone parsing ([72615a4](https://github.com/l4rm4nd/PyADRecon/commit/72615a4f09bfb3aa11bdc4e9becfafe1b722180d))
 
