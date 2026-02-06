@@ -3054,7 +3054,7 @@ class PyADRecon:
             # Calculate execution time
             end_time = datetime.now()
             duration = end_time - self.start_time
-            duration_mins = duration.total_seconds() / 60
+            duration_secs = duration.total_seconds()
 
             # Get computer name where script is running
             import platform
@@ -3083,7 +3083,7 @@ class PyADRecon:
             results.append({"Category": "GitHub Repository", "Value": "github.com/l4rm4nd/PyADRecon"})
             results.append({"Category": "Executed By", "Value": self.config.username if self.config.username else "Current User"})
             results.append({"Category": "Executed From", "Value": f"{local_computer} ({computer_type})"})
-            results.append({"Category": "Execution Time", "Value": f"{duration_mins:.2f} minutes"})
+            results.append({"Category": "Execution Time", "Value": f"{duration_secs:.2f} seconds"})
             results.append({"Category": "Target Domain", "Value": dn_to_fqdn(self.base_dn)})
 
         except Exception as e:
@@ -3259,27 +3259,44 @@ class PyADRecon:
             # Track column widths for auto-sizing later
             column_widths = {}
 
-            # Create Table of Contents sheet first (small, use regular mode)
-            toc_data = [
-                ["PyADRecon Report"],
-                [f"Generated: {datetime.now()}"],
-                [f"Domain: {domain_name or dn_to_fqdn(self.base_dn)}"],
-                [""],
-                ["Sheet Name", "Record Count"],
-            ]
-            
             # Define sheet order to match ADRecon
             SHEET_ORDER = [
-                'Users', 'UserSPNs', 'GroupMembers', 'Groups', 'OUs', 'Computers',
-                'ComputerSPNs', 'LAPS', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
+                'AboutPyADRecon', 'Users', 'UserSPNs', 'GroupMembers', 'Groups', 'OUs', 'Computers',
+                'ComputerSPNs', 'LAPS', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
                 'DomainControllers', 'PasswordPolicy', 'FineGrainedPasswordPolicy',
-                'SchemaHistory', 'Sites', 'Domain', 'Forest', 'AboutPyADRecon'
+                'SchemaHistory', 'Sites', 'Domain', 'Forest'
             ]
             
             # Friendly sheet names mapping
             SHEET_NAME_MAPPING = {
                 'AboutPyADRecon': 'About PyADRecon'
             }
+
+            # Create About PyADRecon sheet first (if it exists)
+            if 'AboutPyADRecon' in self.results and self.results['AboutPyADRecon']:
+                data = self.results['AboutPyADRecon']
+                logger.info(f"    [1/1] Writing AboutPyADRecon ({len(data):,} records)...")
+                display_name = SHEET_NAME_MAPPING.get('AboutPyADRecon', 'AboutPyADRecon')
+                ws = wb.create_sheet(display_name[:31])
+                
+                if data and len(data) > 0:
+                    headers = list(data[0].keys())
+                    header_row = []
+                    for header in headers:
+                        cell = WriteOnlyCell(ws, value=header)
+                        cell.font = header_font
+                        cell.fill = header_fill
+                        cell.alignment = left_alignment
+                        header_row.append(cell)
+                    ws.append(header_row)
+                    
+                    for item in data:
+                        ws.append([item.get(h, '') for h in headers])
+            
+            # Build TOC data
+            toc_data = [
+                ["Sheet Name", "Record Count"],
+            ]
             
             # Build TOC data with User Stats and Computer Stats at the beginning
             stats_sheets = []
@@ -3293,11 +3310,18 @@ class PyADRecon:
                     friendly_name = SHEET_NAME_MAPPING.get(name, name)
                     toc_data.append([friendly_name, len(self.results[name])])
 
+            # Create Table of Contents sheet second
             toc_ws = wb.create_sheet("Table of Contents")
             
-            # Write headers
-            for row in toc_data[:5]:  # First 5 rows (title, date, domain, blank, headers)
-                toc_ws.append(row)
+            # Write header with styling
+            header_row = []
+            for header in toc_data[0]:
+                cell = WriteOnlyCell(toc_ws, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = left_alignment
+                header_row.append(cell)
+            toc_ws.append(header_row)
             
             # Add User Stats and Computer Stats first
             for sheet_info in stats_sheets:
@@ -3312,7 +3336,7 @@ class PyADRecon:
                 toc_ws.append([name_cell, count_cell])
             
             # Write sheet names with hyperlinks (in write_only mode, we need to use WriteOnlyCell)
-            for row_data in toc_data[5:]:
+            for row_data in toc_data[1:]:
                 sheet_name = row_data[0]
                 record_count = row_data[1]
                 
@@ -3457,13 +3481,14 @@ class PyADRecon:
                     ])
             
             # Order sheets according to SHEET_ORDER, then add any remaining
+            # (excluding AboutPyADRecon since it was already created first)
             ordered_names = []
             for sheet in SHEET_ORDER:
-                if sheet in self.results and self.results[sheet]:
+                if sheet != 'AboutPyADRecon' and sheet in self.results and self.results[sheet]:
                     ordered_names.append(sheet)
             # Add any remaining sheets not in the order
             for name in self.results.keys():
-                if name not in ordered_names and self.results[name]:
+                if name != 'AboutPyADRecon' and name not in ordered_names and self.results[name]:
                     ordered_names.append(name)
             
             # Process each result set
@@ -3579,13 +3604,18 @@ class PyADRecon:
                     if ws.max_row > 0 and ws.max_column > 0:
                         ws.auto_filter.ref = ws.dimensions
             
-            # Also auto-size Table of Contents, User Stats, and Computer Stats
-            for special_sheet in ["Table of Contents", "User Stats", "Computer Stats"]:
+            # Also auto-size About PyADRecon, Table of Contents, User Stats, and Computer Stats
+            for special_sheet in ["About PyADRecon", "Table of Contents", "User Stats", "Computer Stats"]:
                 if special_sheet in wb.sheetnames:
                     ws = wb[special_sheet]
                     
                     # Apply center alignment to specific columns
-                    if special_sheet == "Table of Contents":
+                    if special_sheet == "About PyADRecon":
+                        # About: left-aligned
+                        for row in ws.iter_rows():
+                            for cell in row:
+                                cell.alignment = Alignment(horizontal='left', vertical='top')
+                    elif special_sheet == "Table of Contents":
                         # TOC: first column left-aligned, second column (Record Count) centered
                         for row in ws.iter_rows():
                             for col_idx, cell in enumerate(row, 1):
@@ -3660,10 +3690,10 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
 
         # Define sheet order to match ADRecon
         SHEET_ORDER = [
-            'Users', 'UserSPNs', 'GroupMembers', 'Groups', 'OUs', 'Computers',
-            'ComputerSPNs', 'LAPS', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
+            'AboutPyADRecon', 'Users', 'UserSPNs', 'GroupMembers', 'Groups', 'OUs', 'Computers',
+            'ComputerSPNs', 'LAPS', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
             'DomainControllers', 'PasswordPolicy', 'FineGrainedPasswordPolicy',
-            'SchemaHistory', 'Sites', 'Domain', 'Forest', 'AboutPyADRecon'
+            'SchemaHistory', 'Sites', 'Domain', 'Forest'
         ]
         
         # Friendly sheet names mapping
@@ -3699,15 +3729,6 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
         header_fill = PatternFill(start_color="0066CC", end_color="0066CC", fill_type="solid")
         left_alignment = Alignment(horizontal='left', vertical='top')
 
-        # Build TOC data
-        toc_data = [
-            ["PyADRecon Report"],
-            [f"Generated: {datetime.now()}"],
-            [f"Source: {csv_dir}"],
-            [""],
-            ["Sheet Name", "Record Count"],
-        ]
-
         # First pass - count records for TOC
         file_counts = {}
         for csv_file in csv_files:
@@ -3715,22 +3736,70 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
             with open(csv_path, 'r', encoding='utf-8', errors='replace') as f:
                 count = sum(1 for _ in f) - 1  # Subtract header
                 file_counts[csv_file] = max(0, count)
-            sheet_name = csv_file.replace('.csv', '')
-            toc_data.append([sheet_name, file_counts[csv_file]])
 
-        # Create TOC sheet
-        toc_ws = wb.create_sheet("Table of Contents")
-        for row in toc_data:
-            toc_ws.append(row)
+        # Create About PyADRecon sheet first if it exists
+        about_csv = 'AboutPyADRecon.csv'
+        if about_csv in csv_files:
+            csv_path = os.path.join(csv_dir, about_csv)
+            display_name = SHEET_NAME_MAPPING.get('AboutPyADRecon', 'AboutPyADRecon')
+            ws = wb.create_sheet(display_name[:31])
+            record_count = file_counts[about_csv]
+            logger.info(f"    [1/1] Processing {about_csv} ({record_count:,} records)...")
+            
+            with open(csv_path, 'r', encoding='utf-8', errors='replace', newline='') as f:
+                reader = csv.reader(f)
+                try:
+                    headers = next(reader)
+                    header_row = []
+                    for header in headers:
+                        cell = WriteOnlyCell(ws, value=header)
+                        cell.font = header_font
+                        cell.fill = header_fill
+                        cell.alignment = left_alignment
+                        header_row.append(cell)
+                    ws.append(header_row)
+                except StopIteration:
+                    pass
+                
+                for row in reader:
+                    ws.append(row)
+
+        # Build TOC data
+        toc_data = [
+            ["Sheet Name", "Record Count"],
+        ]
         
-        # Add User Stats and Computer Stats links to TOC if they will be created
+        # Add User Stats and Computer Stats first (if they will be created)
         users_csv_path = os.path.join(csv_dir, 'Users.csv')
         computers_csv_path = os.path.join(csv_dir, 'Computers.csv')
         
         if os.path.exists(users_csv_path):
-            toc_ws.append(["User Stats", "Statistics"])
+            toc_data.append(["User Stats", "Statistics"])
         if os.path.exists(computers_csv_path):
-            toc_ws.append(["Computer Stats", "Statistics"])
+            toc_data.append(["Computer Stats", "Statistics"])
+        
+        # Add sheets to TOC (excluding AboutPyADRecon as it was already created)
+        for csv_file in csv_files:
+            if csv_file != about_csv:
+                sheet_name = csv_file.replace('.csv', '')
+                toc_data.append([sheet_name, file_counts[csv_file]])
+
+        # Create TOC sheet second
+        toc_ws = wb.create_sheet("Table of Contents")
+        
+        # Write header with styling
+        header_row = []
+        for header in toc_data[0]:
+            cell = WriteOnlyCell(toc_ws, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = left_alignment
+            header_row.append(cell)
+        toc_ws.append(header_row)
+        
+        # Write data rows
+        for row in toc_data[1:]:
+            toc_ws.append(row)
 
         # Create User Stats tab if Users.csv exists
         if os.path.exists(users_csv_path):
@@ -3978,9 +4047,10 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
                     total_pct
                 ])
 
-        # Process each CSV file
-        total_files = len(csv_files)
-        for idx, csv_file in enumerate(csv_files, 1):
+        # Process each CSV file (excluding AboutPyADRecon as it was already created)
+        remaining_csv_files = [f for f in csv_files if f != 'AboutPyADRecon.csv']
+        total_files = len(remaining_csv_files)
+        for idx, csv_file in enumerate(remaining_csv_files, 1):
             original_name = csv_file.replace('.csv', '')
             # Use friendly name if available, otherwise use original name
             display_name = SHEET_NAME_MAPPING.get(original_name, original_name)
