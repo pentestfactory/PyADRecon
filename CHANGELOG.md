@@ -1,3 +1,10 @@
+## [0.5.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.0...v0.5.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* toc sorting ([26e44d8](https://github.com/l4rm4nd/PyADRecon/commit/26e44d889713edccb7e95d9029624d29768e10f7))
+
 ## [0.5.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.4.0...v0.5.0) (2026-02-06)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * fix kerbeos auth and ldap channel binding ([9da2e05](https://github.com/l4rm4nd/PyADRecon/commit/9da2e0566191c1fda0ccf662189c86773ce29228))
-
-## [0.2.8](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.7...v0.2.8) (2026-02-06)
-
-
-### Bug Fixes
-
-* add domain join info in about tab ([ead80f1](https://github.com/l4rm4nd/PyADRecon/commit/ead80f19521ebfc1c6a5e783e3aa527dae4e62f0))
 
