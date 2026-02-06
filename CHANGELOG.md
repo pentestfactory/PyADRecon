@@ -1,3 +1,10 @@
+## [0.2.6](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.5...v0.2.6) (2026-02-06)
+
+
+### Bug Fixes
+
+* remove obsolete collection methods ([8adbeb9](https://github.com/l4rm4nd/PyADRecon/commit/8adbeb944f50a537302dc8c26b88c7c04a1118eb))
+
 ## [0.2.5](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.4...v0.2.5) (2026-02-05)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * pipeline ([d4caa98](https://github.com/l4rm4nd/PyADRecon/commit/d4caa987a387f80f3f9d2f7f7c478ba5f83812fd))
-
-## [0.2.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.0...v0.2.1) (2026-02-05)
-
-
-### Bug Fixes
-
-* pipeline to inject version into py script ([f48014d](https://github.com/l4rm4nd/PyADRecon/commit/f48014d7dfce162edfd69304d708ca7a6c7fce25))
 
