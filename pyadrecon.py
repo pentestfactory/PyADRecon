@@ -314,6 +314,7 @@ def parse_uac(uac) -> Dict[str, bool]:
     result['Enabled'] = not bool(uac & 0x0002)
     result['PasswordNotRequired'] = bool(uac & 0x0020)
     result['PasswordCantChange'] = bool(uac & 0x0040)
+    result['ReversibleEncryption'] = bool(uac & 0x0080)
     result['PasswordNeverExpires'] = bool(uac & 0x10000)
     result['SmartcardRequired'] = bool(uac & 0x40000)
     result['TrustedForDelegation'] = bool(uac & 0x80000)
@@ -338,6 +339,102 @@ def parse_kerb_enc_types(enc_types) -> Dict[str, bool]:
     }
 
 
+def check_cannot_change_password(entry) -> bool:
+    """
+    Check if user cannot change password by examining ACL.
+    This checks if SELF and Everyone are denied the 'Change Password' right.
+    
+    Change Password GUID: ab721a53-1e2f-11d0-9819-00aa0040529b (user-Change-Password)
+    Access mask for ExtendedRight: 0x00000100 (ADS_RIGHT_DS_CONTROL_ACCESS)
+    """
+    try:
+        # Get the security descriptor
+        sd_attr = None
+        if hasattr(entry, 'ntSecurityDescriptor'):
+            if hasattr(entry.ntSecurityDescriptor, 'raw_values'):
+                if entry.ntSecurityDescriptor.raw_values:
+                    sd_attr = entry.ntSecurityDescriptor.raw_values[0]
+        
+        if not sd_attr or not isinstance(sd_attr, bytes) or len(sd_attr) < 20:
+            return False
+        
+        # Parse security descriptor structure
+        control = struct.unpack('<H', sd_attr[2:4])[0]
+        dacl_offset = struct.unpack('<I', sd_attr[16:20])[0]
+        
+        # Check if DACL is present (SE_DACL_PRESENT = 0x0004)
+        if dacl_offset == 0 or (control & 0x0004) == 0:
+            return False
+        
+        if dacl_offset >= len(sd_attr):
+            return False
+        
+        # Parse DACL
+        dacl = sd_attr[dacl_offset:]
+        if len(dacl) < 8:
+            return False
+        
+        # DACL header: AclRevision(1) + Sbz1(1) + AclSize(2) + AceCount(2) + Sbz2(2)
+        ace_count = struct.unpack('<H', dacl[4:6])[0]
+        
+        # Change Password GUID (user-Change-Password extended right)
+        change_pwd_guid = bytes.fromhex('531a72ab2f1ed011981900aa0040529b')  # Little-endian format
+        
+        # Well-known SIDs in binary format
+        self_sid = b'\x01\x01\x00\x00\x00\x00\x00\x05\x0a\x00\x00\x00'  # S-1-5-10 (SELF)
+        everyone_sid = b'\x01\x01\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00'  # S-1-1-0 (Everyone)
+        
+        # Parse ACEs
+        offset = 8  # Start after DACL header
+        for _ in range(ace_count):
+            if offset + 4 > len(dacl):
+                break
+            
+            ace_type = dacl[offset]
+            ace_size = struct.unpack('<H', dacl[offset+2:offset+4])[0]
+            
+            if offset + ace_size > len(dacl) or ace_size < 16:
+                break
+            
+            # Check for ACCESS_DENIED_OBJECT_ACE_TYPE (0x06) or ACCESS_DENIED_ACE_TYPE (0x01)
+            if ace_type == 0x06:  # ACCESS_DENIED_OBJECT_ACE_TYPE
+                # Parse ACCESS_DENIED_OBJECT_ACE
+                if ace_size < 36:
+                    offset += ace_size
+                    continue
+                
+                access_mask = struct.unpack('<I', dacl[offset+4:offset+8])[0]
+                flags = struct.unpack('<I', dacl[offset+8:offset+12])[0]
+                
+                # Check if this ACE applies to the Change Password extended right
+                # ACE_OBJECT_TYPE_PRESENT = 0x1
+                if flags & 0x1:
+                    object_type = dacl[offset+12:offset+28]
+                    
+                    # Check if this is for Change Password permission
+                    if object_type == change_pwd_guid:
+                        # Find the SID offset
+                        sid_offset = offset + 12 + 16
+                        if flags & 0x2:  # ACE_INHERITED_OBJECT_TYPE_PRESENT
+                            sid_offset += 16
+                        
+                        if sid_offset + 12 <= offset + ace_size:
+                            sid = dacl[sid_offset:offset+ace_size]
+                            
+                            # Check if SID is SELF or Everyone
+                            if len(sid) >= 12:
+                                if sid[:12] == self_sid or sid[:12] == everyone_sid:
+                                    return True
+            
+            offset += ace_size
+        
+        return False
+        
+    except Exception as e:
+        # If we can't parse the security descriptor, return False
+        return False
+
+
 def sid_to_string(sid_bytes) -> str:
     """Convert binary SID to string representation."""
     if sid_bytes is None:
@@ -357,6 +454,196 @@ def sid_to_string(sid_bytes) -> str:
     except Exception:
         pass
     return str(sid_bytes)
+
+
+def calculate_user_stats(users_data: List[Dict], password_age_days: int = 180, dormant_days: int = 90) -> Dict[str, Any]:
+    """Calculate user account statistics for the User Stats tab."""
+    if not users_data:
+        return {}
+    
+    stats = {
+        'enabled_count': 0,
+        'disabled_count': 0,
+        'total_count': len(users_data),
+        'categories': {},
+        'password_age_days': password_age_days,
+        'dormant_days': dormant_days
+    }
+    
+    # Initialize category counters with dynamic thresholds
+    categories = [
+        'Must Change Password at Logon',
+        'Cannot Change Password',
+        'Password Never Expires',
+        'Reversible Password Encryption',
+        'Smartcard Logon Required',
+        'Delegation Permitted',
+        'Kerberos DES Only',
+        'Kerberos RC4',
+        'Does Not Require Pre Auth',
+        f'Password Age (> {password_age_days} days)',
+        'Account Locked Out',
+        'Never Logged in',
+        f'Dormant (> {dormant_days} days)',
+        'Password Not Required',
+        'Unconstrained Delegation',
+        'SIDHistory'
+    ]
+    
+    for cat in categories:
+        stats['categories'][cat] = {
+            'enabled_count': 0,
+            'disabled_count': 0,
+            'total_count': 0
+        }
+    
+    # Count statistics
+    for user in users_data:
+        is_enabled = user.get('Enabled', False)
+        if is_enabled:
+            stats['enabled_count'] += 1
+        else:
+            stats['disabled_count'] += 1
+        
+        # Check each category
+        for cat in categories:
+            is_match = False
+            
+            if cat == 'Must Change Password at Logon':
+                is_match = user.get('Must Change Password at Logon', False) is True
+            elif cat == 'Cannot Change Password':
+                is_match = user.get('Cannot Change Password', False) is True
+            elif cat == 'Password Never Expires':
+                is_match = user.get('Password Never Expires', False) is True
+            elif cat == 'Reversible Password Encryption':
+                is_match = user.get('Reversible Password Encryption', False) is True
+            elif cat == 'Smartcard Logon Required':
+                is_match = user.get('Smartcard Logon Required', False) is True
+            elif cat == 'Delegation Permitted':
+                is_match = user.get('Delegation Permitted', False) is True
+            elif cat == 'Kerberos DES Only':
+                is_match = user.get('Kerberos DES Only', False) is True
+            elif cat == 'Kerberos RC4':
+                is_match = bool(user.get('Kerberos RC4', ''))
+            elif cat == 'Does Not Require Pre Auth':
+                is_match = user.get('Does Not Require Pre Auth', False) is True
+            elif cat.startswith('Password Age (>'):
+                pwd_age = user.get('Password Age (days)', '')
+                is_match = isinstance(pwd_age, (int, float)) and pwd_age > password_age_days
+            elif cat == 'Account Locked Out':
+                is_match = user.get('Account Locked Out', False) is True
+            elif cat == 'Never Logged in':
+                is_match = user.get('Never Logged in', False) is True
+            elif cat.startswith('Dormant (>'):
+                # Check for dormant field - it might have different keys based on config
+                for key in user.keys():
+                    if 'Dormant' in key:
+                        is_match = user.get(key, False) is True
+                        break
+            elif cat == 'Password Not Required':
+                is_match = user.get('Password Not Required', False) is True
+            elif cat == 'Unconstrained Delegation':
+                is_match = user.get('Delegation Type', '') == 'Unconstrained'
+            elif cat == 'SIDHistory':
+                is_match = bool(user.get('SIDHistory', ''))
+            
+            if is_match:
+                stats['categories'][cat]['total_count'] += 1
+                if is_enabled:
+                    stats['categories'][cat]['enabled_count'] += 1
+                else:
+                    stats['categories'][cat]['disabled_count'] += 1
+    
+    return stats
+
+
+def calculate_computer_stats(computers_data: List[Dict], laps_data: List[Dict] = None, password_age_days: int = 30, dormant_days: int = 90) -> Dict[str, Any]:
+    """Calculate computer account statistics for the Computer Stats tab."""
+    if not computers_data:
+        return {}
+    
+    # Build a set of computer names that have LAPS
+    laps_computers = set()
+    if laps_data:
+        for laps_entry in laps_data:
+            hostname = laps_entry.get('Hostname', '')
+            stored = laps_entry.get('Stored', False)
+            if hostname and stored:
+                # Normalize hostname (remove domain suffix if present)
+                hostname_parts = hostname.split('.')
+                laps_computers.add(hostname_parts[0].lower())
+    
+    stats = {
+        'enabled_count': 0,
+        'disabled_count': 0,
+        'total_count': len(computers_data),
+        'categories': {},
+        'password_age_days': password_age_days,
+        'dormant_days': dormant_days
+    }
+    
+    # Initialize category counters with dynamic thresholds
+    categories = [
+        'Unconstrained Delegation',
+        'Constrained Delegation',
+        'SIDHistory',
+        f'Dormant (> {dormant_days} days)',
+        f'Password Age (> {password_age_days} days)',
+        'ms-ds-CreatorSid',
+        'LAPS'
+    ]
+    
+    for cat in categories:
+        stats['categories'][cat] = {
+            'enabled_count': 0,
+            'disabled_count': 0,
+            'total_count': 0
+        }
+    
+    # Count statistics
+    for computer in computers_data:
+        is_enabled = computer.get('Enabled', False)
+        if is_enabled:
+            stats['enabled_count'] += 1
+        else:
+            stats['disabled_count'] += 1
+        
+        # Check each category
+        for cat in categories:
+            is_match = False
+            
+            if cat == 'Unconstrained Delegation':
+                is_match = computer.get('Delegation Type', '') == 'Unconstrained'
+            elif cat == 'Constrained Delegation':
+                is_match = computer.get('Delegation Type', '') == 'Constrained'
+            elif cat == 'SIDHistory':
+                is_match = bool(computer.get('SIDHistory', ''))
+            elif cat.startswith('Dormant (>'):
+                # Check for dormant field - it might have different keys based on config
+                for key in computer.keys():
+                    if 'Dormant' in key:
+                        is_match = computer.get(key, False) is True
+                        break
+            elif cat.startswith('Password Age (>'):
+                pwd_age = computer.get('Password Age (days)', '')
+                is_match = isinstance(pwd_age, (int, float)) and pwd_age > password_age_days
+            elif cat == 'ms-ds-CreatorSid':
+                is_match = bool(computer.get('ms-ds-CreatorSid', ''))
+            elif cat == 'LAPS':
+                # Check if computer has LAPS by comparing hostname
+                hostname = computer.get('DNSHostName', '') or computer.get('Name', '')
+                if hostname:
+                    hostname_parts = hostname.split('.')
+                    is_match = hostname_parts[0].lower() in laps_computers
+            
+            if is_match:
+                stats['categories'][cat]['total_count'] += 1
+                if is_enabled:
+                    stats['categories'][cat]['enabled_count'] += 1
+                else:
+                    stats['categories'][cat]['disabled_count'] += 1
+    
+    return stats
 
 
 @dataclass
@@ -1458,12 +1745,18 @@ class PyADRecon:
                  'primaryGroupID', 'objectSid', 'sIDHistory', 'servicePrincipalName',
                  'msDS-AllowedToDelegateTo', 'msDS-SupportedEncryptionTypes',
                  'givenName', 'sn', 'middleName', 'c', 'info', 'logonWorkstation',
-                 'whenCreated', 'whenChanged']
+                 'whenCreated', 'whenChanged', 'ntSecurityDescriptor']
             )
 
             for entry in entries:
                 uac = get_attr(entry, 'userAccountControl', 0)
                 uac_parsed = parse_uac(uac)
+
+                # Check "Cannot Change Password" via ACL (preferred) or UAC flag (fallback)
+                cannot_change_pwd = check_cannot_change_password(entry)
+                if not cannot_change_pwd:
+                    # Fallback to UAC flag if ACL check didn't find it
+                    cannot_change_pwd = uac_parsed.get('PasswordCantChange', False)
 
                 # Password last set
                 pwd_last_set = get_attr(entry, 'pwdLastSet')
@@ -1555,9 +1848,9 @@ class PyADRecon:
                     "Name": get_attr(entry, 'name', ''),
                     "Enabled": uac_parsed.get('Enabled', ''),
                     "Must Change Password at Logon": must_change_pwd,
-                    "Cannot Change Password": uac_parsed.get('PasswordCantChange', False),
+                    "Cannot Change Password": cannot_change_pwd,
                     "Password Never Expires": uac_parsed.get('PasswordNeverExpires', False),
-                    "Reversible Password Encryption": False,  # Would need to check AD policies
+                    "Reversible Password Encryption": uac_parsed.get('ReversibleEncryption', False),
                     "Smartcard Logon Required": uac_parsed.get('SmartcardRequired', False),
                     "Delegation Permitted": not uac_parsed.get('NotDelegated', False),
                     "Kerberos DES Only": uac_parsed.get('UseDESKeyOnly', False),
@@ -3013,6 +3306,152 @@ class PyADRecon:
                 
                 toc_ws.append([name_cell, count_cell])
             
+            # Add User Stats and Computer Stats to TOC
+            if 'Users' in self.results and self.results['Users']:
+                name_cell = WriteOnlyCell(toc_ws, value="User Stats")
+                name_cell.hyperlink = "#'User Stats'!A1"
+                name_cell.font = Font(color="0563C1", underline="single")
+                count_cell = WriteOnlyCell(toc_ws, value="Statistics")
+                toc_ws.append([name_cell, count_cell])
+            
+            if 'Computers' in self.results and self.results['Computers']:
+                name_cell = WriteOnlyCell(toc_ws, value="Computer Stats")
+                name_cell.hyperlink = "#'Computer Stats'!A1"
+                name_cell.font = Font(color="0563C1", underline="single")
+                count_cell = WriteOnlyCell(toc_ws, value="Statistics")
+                toc_ws.append([name_cell, count_cell])
+            
+            # Create User Stats tab
+            if 'Users' in self.results and self.results['Users']:
+                logger.info("    Creating User Stats tab...")
+                user_stats = calculate_user_stats(self.results['Users'], self.config.password_age_days, self.config.dormant_days)
+                user_stats_ws = wb.create_sheet("User Stats")
+                
+                # Add heading
+                heading_cell = WriteOnlyCell(user_stats_ws, value="Status of User Accounts")
+                heading_cell.font = Font(bold=True, size=14)
+                user_stats_ws.append([heading_cell])
+                user_stats_ws.append([])  # Blank row
+                
+                # Add enabled/disabled summary
+                summary_header_row = []
+                for header in ["Category", "Count"]:
+                    cell = WriteOnlyCell(user_stats_ws, value=header)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = left_alignment
+                    summary_header_row.append(cell)
+                user_stats_ws.append(summary_header_row)
+                
+                user_stats_ws.append(["Enabled Users", user_stats['enabled_count']])
+                user_stats_ws.append(["Disabled Users", user_stats['disabled_count']])
+                user_stats_ws.append(["Total Users", user_stats['total_count']])
+                user_stats_ws.append([])  # Blank row
+                
+                # Add statistics table header
+                stats_headers = ["Category", "Enabled Count", "Enabled Percentage", 
+                               "Disabled Count", "Disabled Percentage", "Total Count", "Total Percentage"]
+                stats_header_row = []
+                for header in stats_headers:
+                    cell = WriteOnlyCell(user_stats_ws, value=header)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = left_alignment
+                    stats_header_row.append(cell)
+                user_stats_ws.append(stats_header_row)
+                
+                # Add statistics data
+                total_enabled = user_stats['enabled_count']
+                total_disabled = user_stats['disabled_count']
+                total_count = user_stats['total_count']
+                
+                for category, counts in user_stats['categories'].items():
+                    enabled_count = counts['enabled_count']
+                    disabled_count = counts['disabled_count']
+                    cat_total = counts['total_count']
+                    
+                    # Calculate percentages
+                    enabled_pct = f"{(enabled_count / total_enabled * 100):.1f}%" if total_enabled > 0 else "0.0%"
+                    disabled_pct = f"{(disabled_count / total_disabled * 100):.1f}%" if total_disabled > 0 else "0.0%"
+                    total_pct = f"{(cat_total / total_count * 100):.1f}%" if total_count > 0 else "0.0%"
+                    
+                    user_stats_ws.append([
+                        category,
+                        enabled_count,
+                        enabled_pct,
+                        disabled_count,
+                        disabled_pct,
+                        cat_total,
+                        total_pct
+                    ])
+            
+            # Create Computer Stats tab
+            if 'Computers' in self.results and self.results['Computers']:
+                logger.info("    Creating Computer Stats tab...")
+                laps_data = self.results.get('LAPS', [])
+                # For computers, ADRecon uses 30 days as a separate analysis threshold
+                # (independent of the password_age_days config used for data collection)
+                computer_stats = calculate_computer_stats(self.results['Computers'], laps_data, 30, self.config.dormant_days)
+                computer_stats_ws = wb.create_sheet("Computer Stats")
+                
+                # Add heading
+                heading_cell = WriteOnlyCell(computer_stats_ws, value="Status of Computer Accounts")
+                heading_cell.font = Font(bold=True, size=14)
+                computer_stats_ws.append([heading_cell])
+                computer_stats_ws.append([])  # Blank row
+                
+                # Add enabled/disabled summary
+                summary_header_row = []
+                for header in ["Category", "Count"]:
+                    cell = WriteOnlyCell(computer_stats_ws, value=header)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = left_alignment
+                    summary_header_row.append(cell)
+                computer_stats_ws.append(summary_header_row)
+                
+                computer_stats_ws.append(["Enabled Computers", computer_stats['enabled_count']])
+                computer_stats_ws.append(["Disabled Computers", computer_stats['disabled_count']])
+                computer_stats_ws.append(["Total Computers", computer_stats['total_count']])
+                computer_stats_ws.append([])  # Blank row
+                
+                # Add statistics table header
+                stats_headers = ["Category", "Enabled Count", "Enabled Percentage", 
+                               "Disabled Count", "Disabled Percentage", "Total Count", "Total Percentage"]
+                stats_header_row = []
+                for header in stats_headers:
+                    cell = WriteOnlyCell(computer_stats_ws, value=header)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = left_alignment
+                    stats_header_row.append(cell)
+                computer_stats_ws.append(stats_header_row)
+                
+                # Add statistics data
+                total_enabled = computer_stats['enabled_count']
+                total_disabled = computer_stats['disabled_count']
+                total_count = computer_stats['total_count']
+                
+                for category, counts in computer_stats['categories'].items():
+                    enabled_count = counts['enabled_count']
+                    disabled_count = counts['disabled_count']
+                    cat_total = counts['total_count']
+                    
+                    # Calculate percentages
+                    enabled_pct = f"{(enabled_count / total_enabled * 100):.1f}%" if total_enabled > 0 else "0.0%"
+                    disabled_pct = f"{(disabled_count / total_disabled * 100):.1f}%" if total_disabled > 0 else "0.0%"
+                    total_pct = f"{(cat_total / total_count * 100):.1f}%" if total_count > 0 else "0.0%"
+                    
+                    computer_stats_ws.append([
+                        category,
+                        enabled_count,
+                        enabled_pct,
+                        disabled_count,
+                        disabled_pct,
+                        cat_total,
+                        total_pct
+                    ])
+            
             # Order sheets according to SHEET_ORDER, then add any remaining
             ordered_names = []
             for sheet in SHEET_ORDER:
@@ -3136,20 +3575,41 @@ class PyADRecon:
                     if ws.max_row > 0 and ws.max_column > 0:
                         ws.auto_filter.ref = ws.dimensions
             
-            # Also auto-size Table of Contents
-            if "Table of Contents" in wb.sheetnames:
-                toc_ws = wb["Table of Contents"]
-                for column in toc_ws.columns:
-                    max_length = 0
-                    column_letter = column[0].column_letter
-                    for cell in column:
-                        try:
-                            if cell.value:
-                                max_length = max(max_length, len(str(cell.value)))
-                        except:
-                            pass
-                    adjusted_width = min(max_length + 2, 100)
-                    toc_ws.column_dimensions[column_letter].width = adjusted_width
+            # Also auto-size Table of Contents, User Stats, and Computer Stats
+            for special_sheet in ["Table of Contents", "User Stats", "Computer Stats"]:
+                if special_sheet in wb.sheetnames:
+                    ws = wb[special_sheet]
+                    
+                    # Apply center alignment to specific columns
+                    if special_sheet == "Table of Contents":
+                        # TOC: first column left-aligned, second column (Record Count) centered
+                        for row in ws.iter_rows():
+                            for col_idx, cell in enumerate(row, 1):
+                                if col_idx == 1:
+                                    cell.alignment = Alignment(horizontal='left', vertical='top')
+                                else:
+                                    cell.alignment = Alignment(horizontal='center', vertical='top')
+                    elif special_sheet in ["User Stats", "Computer Stats"]:
+                        # Stats sheets: first column (Category) left-aligned, rest centered
+                        for row in ws.iter_rows():
+                            for col_idx, cell in enumerate(row, 1):
+                                if col_idx == 1:
+                                    cell.alignment = Alignment(horizontal='left', vertical='top')
+                                else:
+                                    cell.alignment = Alignment(horizontal='center', vertical='top')
+                    
+                    # Auto-size columns
+                    for column in ws.columns:
+                        max_length = 0
+                        column_letter = column[0].column_letter
+                        for cell in column:
+                            try:
+                                if cell.value:
+                                    max_length = max(max_length, len(str(cell.value)))
+                            except:
+                                pass
+                        adjusted_width = min(max_length + 2, 100)
+                        ws.column_dimensions[column_letter].width = adjusted_width
             
             wb.save(filename)
             wb.close()
@@ -3258,6 +3718,261 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
         toc_ws = wb.create_sheet("Table of Contents")
         for row in toc_data:
             toc_ws.append(row)
+        
+        # Add User Stats and Computer Stats links to TOC if they will be created
+        users_csv_path = os.path.join(csv_dir, 'Users.csv')
+        computers_csv_path = os.path.join(csv_dir, 'Computers.csv')
+        
+        if os.path.exists(users_csv_path):
+            toc_ws.append(["User Stats", "Statistics"])
+        if os.path.exists(computers_csv_path):
+            toc_ws.append(["Computer Stats", "Statistics"])
+
+        # Create User Stats tab if Users.csv exists
+        if os.path.exists(users_csv_path):
+            logger.info("    Creating User Stats tab from Users.csv...")
+            # Read Users.csv into memory and detect thresholds from column names
+            users_data = []
+            password_age_days = 180  # Default
+            dormant_days = 90  # Default
+            
+            with open(users_csv_path, 'r', encoding='utf-8', errors='replace', newline='') as f:
+                reader = csv.DictReader(f)
+                
+                # Try to extract thresholds from column names
+                if reader.fieldnames:
+                    for fieldname in reader.fieldnames:
+                        if 'Password Age (>' in fieldname and 'days)' in fieldname:
+                            try:
+                                import re
+                                match = re.search(r'> (\d+) days', fieldname)
+                                if match:
+                                    password_age_days = int(match.group(1))
+                            except:
+                                pass
+                        elif 'Dormant (>' in fieldname and 'days)' in fieldname:
+                            try:
+                                import re
+                                match = re.search(r'> (\d+) days', fieldname)
+                                if match:
+                                    dormant_days = int(match.group(1))
+                            except:
+                                pass
+                
+                for row in reader:
+                    # Convert string values to appropriate types
+                    processed_row = {}
+                    for key, value in row.items():
+                        if value in ['True', 'TRUE', 'true']:
+                            processed_row[key] = True
+                        elif value in ['False', 'FALSE', 'false']:
+                            processed_row[key] = False
+                        elif value == '':
+                            processed_row[key] = ''
+                        else:
+                            # Try to convert to number
+                            try:
+                                if '.' in value:
+                                    processed_row[key] = float(value)
+                                else:
+                                    processed_row[key] = int(value)
+                            except (ValueError, AttributeError):
+                                processed_row[key] = value
+                    users_data.append(processed_row)
+            
+            # Calculate statistics with detected thresholds
+            user_stats = calculate_user_stats(users_data, password_age_days, dormant_days)
+            user_stats_ws = wb.create_sheet("User Stats")
+            
+            # Add heading
+            heading_cell = WriteOnlyCell(user_stats_ws, value="Status of User Accounts")
+            heading_cell.font = Font(bold=True, size=14)
+            user_stats_ws.append([heading_cell])
+            user_stats_ws.append([])  # Blank row
+            
+            # Add enabled/disabled summary
+            summary_header_row = []
+            for header in ["Category", "Count"]:
+                cell = WriteOnlyCell(user_stats_ws, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = left_alignment
+                summary_header_row.append(cell)
+            user_stats_ws.append(summary_header_row)
+            
+            user_stats_ws.append(["Enabled Users", user_stats['enabled_count']])
+            user_stats_ws.append(["Disabled Users", user_stats['disabled_count']])
+            user_stats_ws.append(["Total Users", user_stats['total_count']])
+            user_stats_ws.append([])  # Blank row
+            
+            # Add statistics table header
+            stats_headers = ["Category", "Enabled Count", "Enabled Percentage", 
+                           "Disabled Count", "Disabled Percentage", "Total Count", "Total Percentage"]
+            stats_header_row = []
+            for header in stats_headers:
+                cell = WriteOnlyCell(user_stats_ws, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = left_alignment
+                stats_header_row.append(cell)
+            user_stats_ws.append(stats_header_row)
+            
+            # Add statistics data
+            total_enabled = user_stats['enabled_count']
+            total_disabled = user_stats['disabled_count']
+            total_count = user_stats['total_count']
+            
+            for category, counts in user_stats['categories'].items():
+                enabled_count = counts['enabled_count']
+                disabled_count = counts['disabled_count']
+                cat_total = counts['total_count']
+                
+                # Calculate percentages
+                enabled_pct = f"{(enabled_count / total_enabled * 100):.1f}%" if total_enabled > 0 else "0.0%"
+                disabled_pct = f"{(disabled_count / total_disabled * 100):.1f}%" if total_disabled > 0 else "0.0%"
+                total_pct = f"{(cat_total / total_count * 100):.1f}%" if total_count > 0 else "0.0%"
+                
+                user_stats_ws.append([
+                    category,
+                    enabled_count,
+                    enabled_pct,
+                    disabled_count,
+                    disabled_pct,
+                    cat_total,
+                    total_pct
+                ])
+
+        # Create Computer Stats tab if Computers.csv exists
+        computers_csv_path = os.path.join(csv_dir, 'Computers.csv')
+        if os.path.exists(computers_csv_path):
+            logger.info("    Creating Computer Stats tab from Computers.csv...")
+            # Read Computers.csv into memory and detect thresholds from column names
+            computers_data = []
+            password_age_days = 30  # Default for computers
+            dormant_days = 90  # Default
+            
+            with open(computers_csv_path, 'r', encoding='utf-8', errors='replace', newline='') as f:
+                reader = csv.DictReader(f)
+                
+                # Try to extract thresholds from column names
+                if reader.fieldnames:
+                    for fieldname in reader.fieldnames:
+                        if 'Password Age (>' in fieldname and 'days)' in fieldname:
+                            try:
+                                import re
+                                match = re.search(r'> (\d+) days', fieldname)
+                                if match:
+                                    password_age_days = int(match.group(1))
+                            except:
+                                pass
+                        elif 'Dormant (>' in fieldname and 'days)' in fieldname:
+                            try:
+                                import re
+                                match = re.search(r'> (\d+) days', fieldname)
+                                if match:
+                                    dormant_days = int(match.group(1))
+                            except:
+                                pass
+                
+                for row in reader:
+                    # Convert string values to appropriate types
+                    processed_row = {}
+                    for key, value in row.items():
+                        if value in ['True', 'TRUE', 'true']:
+                            processed_row[key] = True
+                        elif value in ['False', 'FALSE', 'false']:
+                            processed_row[key] = False
+                        elif value == '':
+                            processed_row[key] = ''
+                        else:
+                            # Try to convert to number
+                            try:
+                                if '.' in value:
+                                    processed_row[key] = float(value)
+                                else:
+                                    processed_row[key] = int(value)
+                            except (ValueError, AttributeError):
+                                processed_row[key] = value
+                    computers_data.append(processed_row)
+            
+            # Read LAPS.csv if it exists for LAPS detection
+            laps_data = []
+            laps_csv_path = os.path.join(csv_dir, 'LAPS.csv')
+            if os.path.exists(laps_csv_path):
+                with open(laps_csv_path, 'r', encoding='utf-8', errors='replace', newline='') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        processed_row = {}
+                        for key, value in row.items():
+                            if value in ['True', 'TRUE', 'true']:
+                                processed_row[key] = True
+                            elif value in ['False', 'FALSE', 'false']:
+                                processed_row[key] = False
+                            else:
+                                processed_row[key] = value
+                        laps_data.append(processed_row)
+            
+            # Calculate statistics with detected thresholds
+            computer_stats = calculate_computer_stats(computers_data, laps_data, password_age_days, dormant_days)
+            computer_stats_ws = wb.create_sheet("Computer Stats")
+            
+            # Add heading
+            heading_cell = WriteOnlyCell(computer_stats_ws, value="Status of Computer Accounts")
+            heading_cell.font = Font(bold=True, size=14)
+            computer_stats_ws.append([heading_cell])
+            computer_stats_ws.append([])  # Blank row
+            
+            # Add enabled/disabled summary
+            summary_header_row = []
+            for header in ["Category", "Count"]:
+                cell = WriteOnlyCell(computer_stats_ws, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = left_alignment
+                summary_header_row.append(cell)
+            computer_stats_ws.append(summary_header_row)
+            
+            computer_stats_ws.append(["Enabled Computers", computer_stats['enabled_count']])
+            computer_stats_ws.append(["Disabled Computers", computer_stats['disabled_count']])
+            computer_stats_ws.append(["Total Computers", computer_stats['total_count']])
+            computer_stats_ws.append([])  # Blank row
+            
+            # Add statistics table header
+            stats_headers = ["Category", "Enabled Count", "Enabled Percentage", 
+                           "Disabled Count", "Disabled Percentage", "Total Count", "Total Percentage"]
+            stats_header_row = []
+            for header in stats_headers:
+                cell = WriteOnlyCell(computer_stats_ws, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = left_alignment
+                stats_header_row.append(cell)
+            computer_stats_ws.append(stats_header_row)
+            
+            # Add statistics data
+            total_enabled = computer_stats['enabled_count']
+            total_disabled = computer_stats['disabled_count']
+            total_count = computer_stats['total_count']
+            
+            for category, counts in computer_stats['categories'].items():
+                enabled_count = counts['enabled_count']
+                disabled_count = counts['disabled_count']
+                cat_total = counts['total_count']
+                
+                # Calculate percentages
+                enabled_pct = f"{(enabled_count / total_enabled * 100):.1f}%" if total_enabled > 0 else "0.0%"
+                disabled_pct = f"{(disabled_count / total_disabled * 100):.1f}%" if total_disabled > 0 else "0.0%"
+                total_pct = f"{(cat_total / total_count * 100):.1f}%" if total_count > 0 else "0.0%"
+                
+                computer_stats_ws.append([
+                    category,
+                    enabled_count,
+                    enabled_pct,
+                    disabled_count,
+                    disabled_pct,
+                    cat_total,
+                    total_pct
+                ])
 
         # Process each CSV file
         total_files = len(csv_files)
@@ -3339,20 +4054,52 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
         logger.info(f"    Saving Excel file...")
         wb.save(filename)
         
-        # Reopen to add filters (can't do this in write_only mode)
-        logger.info(f"    Adding filters to all sheets...")
+        # Reopen to add filters and auto-size columns
+        logger.info(f"    Adding filters and auto-sizing columns...")
         from openpyxl import load_workbook
         
         wb = load_workbook(filename)
         for sheet_name in wb.sheetnames:
-            if sheet_name != "Table of Contents":  # Skip TOC
-                ws = wb[sheet_name]
-                
-                # Apply left alignment to all cells
+            ws = wb[sheet_name]
+            
+            # Apply alignment based on sheet type
+            if sheet_name == "Table of Contents":
+                # TOC: first column left-aligned, second column (Record Count) centered
+                for row in ws.iter_rows():
+                    for col_idx, cell in enumerate(row, 1):
+                        if col_idx == 1:
+                            cell.alignment = Alignment(horizontal='left', vertical='top')
+                        else:
+                            cell.alignment = Alignment(horizontal='center', vertical='top')
+            elif sheet_name in ["User Stats", "Computer Stats"]:
+                # Stats sheets: first column left-aligned, rest centered
+                for row in ws.iter_rows():
+                    for col_idx, cell in enumerate(row, 1):
+                        if col_idx == 1:
+                            cell.alignment = Alignment(horizontal='left', vertical='top')
+                        else:
+                            cell.alignment = Alignment(horizontal='center', vertical='top')
+            else:
+                # All other sheets: left-aligned
                 for row in ws.iter_rows():
                     for cell in row:
                         cell.alignment = Alignment(horizontal='left', vertical='top')
-                
+            
+            # Auto-size all columns
+            for column in ws.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if cell.value:
+                            max_length = max(max_length, len(str(cell.value)))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 100)
+                ws.column_dimensions[column_letter].width = adjusted_width
+            
+            # Add filters (skip TOC and stats sheets)
+            if sheet_name not in ["Table of Contents", "User Stats", "Computer Stats"]:
                 if ws.max_row > 0 and ws.max_column > 0:
                     ws.auto_filter.ref = ws.dimensions
         
