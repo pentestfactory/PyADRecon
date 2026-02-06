@@ -76,7 +76,8 @@ Examples:
 >If flag `--ssl` is not used, LDAP on TCP/389 may be tried as fallback.
 
 >[!CAUTION]
->If you use Kerberos authentication, please create a valid `/etc/krb5.conf`.
+>If LDAP channel binding is enabled, this script will fail. You have to use Kerberos authentication then.
+>If you use Kerberos auth, please create a valid `/etc/krb5.conf` and DC in `/etc/hosts`.
 
 ## Docker
 
