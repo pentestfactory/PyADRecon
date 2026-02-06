@@ -1,3 +1,10 @@
+## [0.2.7](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.6...v0.2.7) (2026-02-06)
+
+
+### Bug Fixes
+
+* always try ldaps first + adjust password age threshold ([f3b6c1c](https://github.com/l4rm4nd/PyADRecon/commit/f3b6c1c2f632d3d8ca0ead344639674e799ea8d7))
+
 ## [0.2.6](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.5...v0.2.6) (2026-02-06)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * reduce docker image size and fix toc links + add pyadrecon version into excel ([745b4fd](https://github.com/l4rm4nd/PyADRecon/commit/745b4fda5ff470b5076157a7c4490849ef881070))
-
-## [0.2.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.1...v0.2.2) (2026-02-05)
-
-
-### Bug Fixes
-
-* pipeline ([d4caa98](https://github.com/l4rm4nd/PyADRecon/commit/d4caa987a387f80f3f9d2f7f7c478ba5f83812fd))
 
