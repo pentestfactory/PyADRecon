@@ -76,7 +76,8 @@ Examples:
 >If flag `--ssl` is not used, LDAP on TCP/389 may be tried as fallback.
 
 >[!CAUTION]
->If LDAP channel binding is enabled, this script will fail. You have to use Kerberos authentication then.
+>If LDAP channel binding is enabled, this script will fail with `automatic bind not successful - strongerAuthRequired` as ldap3 does not support it. You would have to use Kerberos authentication instead.
+>
 >If you use Kerberos auth, please create a valid `/etc/krb5.conf` and DC hostname entry in `/etc/hosts`.
 
 ## Docker
