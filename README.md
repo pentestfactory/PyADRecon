@@ -67,8 +67,7 @@ docker run --rm -v ./:/tmp/pyadrecon_output ghcr.io/l4rm4nd/pyadrecon -dc 192.16
 
 ## Available Collection Modules
 
-- `default`
-- `all`
+- `default` or `all`
 
 **Forest & Domain**
 - `forest`
@@ -80,8 +79,7 @@ docker run --rm -v ./:/tmp/pyadrecon_output ghcr.io/l4rm4nd/pyadrecon -dc 192.16
 - `schemahistory`
 
 **Domain Controllers**
-- `dcs`
-- `domaincontrollers`
+- `dcs` or `domaincontrollers`
 
 **Users & Groups**
 - `users`
@@ -100,8 +98,7 @@ docker run --rm -v ./:/tmp/pyadrecon_output ghcr.io/l4rm4nd/pyadrecon -dc 192.16
 
 **Security**
 - `passwordpolicy`
-- `fgpp`
-- `finegrainedpasswordpolicy`
+- `fgpp` or `finegrainedpasswordpolicy`
 - `kerberoast`
 - `acls`
 
