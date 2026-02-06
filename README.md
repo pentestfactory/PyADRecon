@@ -97,7 +97,7 @@ Examples:
 There is also a Docker image available on GHCR.IO.
 
 ````
-docker run --rm -v ./:/tmp/pyadrecon_output ghcr.io/l4rm4nd/pyadrecon -dc 192.168.1.1 -u admin -p pass -d DOMAIN.LOCAL -o /tmp/pyadrecon_output
+docker run --rm -v /etc/krb5.conf:/etc/krb5.conf:ro -v /etc/hosts:/etc/hosts:ro -v ./:/tmp/pyadrecon_output ghcr.io/l4rm4nd/pyadrecon:latest -dc dc01.domain.local -u admin -p password123 -d DOMAIN.LOCAL -o /tmp/pyadrecon_output
 ````
 
 ## Collection Modules
