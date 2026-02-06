@@ -2602,8 +2602,8 @@ class PyADRecon:
             import platform
             local_computer = platform.node()
             
-            # Try to determine computer type (would need AD query in real scenario)
-            computer_type = "Unknown"
+            # Try to determine computer type by searching AD
+            computer_type = "Non-Domain System"
             try:
                 # Try to find the computer in AD
                 comp_entries = self.search(
@@ -2614,9 +2614,9 @@ class PyADRecon:
                 if comp_entries:
                     os_name = get_attr(comp_entries[0], 'operatingSystem', '')
                     if 'Server' in os_name:
-                        computer_type = "Member Server"
+                        computer_type = "Domain Member Server"
                     else:
-                        computer_type = "Member Workstation"
+                        computer_type = "Domain Member Workstation"
             except:
                 pass
 
