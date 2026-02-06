@@ -3281,6 +3281,13 @@ class PyADRecon:
                 'AboutPyADRecon': 'About PyADRecon'
             }
             
+            # Build TOC data with User Stats and Computer Stats at the beginning
+            stats_sheets = []
+            if 'Users' in self.results and self.results['Users']:
+                stats_sheets.append(['User Stats', 'Statistics'])
+            if 'Computers' in self.results and self.results['Computers']:
+                stats_sheets.append(['Computer Stats', 'Statistics'])
+            
             for name in SHEET_ORDER:
                 if name in self.results and self.results[name]:
                     friendly_name = SHEET_NAME_MAPPING.get(name, name)
@@ -3291,6 +3298,18 @@ class PyADRecon:
             # Write headers
             for row in toc_data[:5]:  # First 5 rows (title, date, domain, blank, headers)
                 toc_ws.append(row)
+            
+            # Add User Stats and Computer Stats first
+            for sheet_info in stats_sheets:
+                sheet_name = sheet_info[0]
+                record_count = sheet_info[1]
+                
+                name_cell = WriteOnlyCell(toc_ws, value=sheet_name)
+                name_cell.hyperlink = f"#'{sheet_name}'!A1"
+                name_cell.font = Font(color="0563C1", underline="single")
+                count_cell = WriteOnlyCell(toc_ws, value=record_count)
+                
+                toc_ws.append([name_cell, count_cell])
             
             # Write sheet names with hyperlinks (in write_only mode, we need to use WriteOnlyCell)
             for row_data in toc_data[5:]:
@@ -3304,21 +3323,6 @@ class PyADRecon:
                 
                 count_cell = WriteOnlyCell(toc_ws, value=record_count)
                 
-                toc_ws.append([name_cell, count_cell])
-            
-            # Add User Stats and Computer Stats to TOC
-            if 'Users' in self.results and self.results['Users']:
-                name_cell = WriteOnlyCell(toc_ws, value="User Stats")
-                name_cell.hyperlink = "#'User Stats'!A1"
-                name_cell.font = Font(color="0563C1", underline="single")
-                count_cell = WriteOnlyCell(toc_ws, value="Statistics")
-                toc_ws.append([name_cell, count_cell])
-            
-            if 'Computers' in self.results and self.results['Computers']:
-                name_cell = WriteOnlyCell(toc_ws, value="Computer Stats")
-                name_cell.hyperlink = "#'Computer Stats'!A1"
-                name_cell.font = Font(color="0563C1", underline="single")
-                count_cell = WriteOnlyCell(toc_ws, value="Statistics")
                 toc_ws.append([name_cell, count_cell])
             
             # Create User Stats tab
