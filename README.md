@@ -13,7 +13,7 @@ git clone https://github.com/l4rm4nd/PyADRecon && cd PyADRecon
 # create virtual environment
 virtualenv venv && source venv/bin/activate
 
-# installd dependencies
+# install dependencies
 pip install -r requirements.txt
 ````
 
