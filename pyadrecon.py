@@ -65,7 +65,7 @@ except ImportError:
 
 
 # Constants
-VERSION = "v0.2.6"  # Automatically updated by CI/CD pipeline during release
+VERSION = "v0.2.5"  # Automatically updated by CI/CD pipeline during release
 BANNER = f"""
 ╔═════════════════════════════════════════════════════════
 ║  PyADRecon {VERSION} - Python AD Reconnaissance Tool      
@@ -354,7 +354,7 @@ class ADReconConfig:
     page_size: int = 500
     threads: int = 10
     dormant_days: int = 90
-    password_age_days: int = 30
+    password_age_days: int = 180
     output_dir: str = ""
     only_enabled: bool = False
 
@@ -398,59 +398,79 @@ class PyADRecon:
         self.start_time: datetime = datetime.now()
 
     def connect(self) -> bool:
-        """Establish LDAP connection."""
-        try:
-            port = 636 if self.config.use_ssl else self.config.port
-            server = Server(
-                self.config.domain_controller,
-                port=port,
-                use_ssl=self.config.use_ssl,
-                get_info=ALL
-            )
-
-            if self.config.auth_method.lower() == 'kerberos':
-                logger.info("Connecting using Kerberos authentication...")
-                self.conn = Connection(
-                    server,
-                    user=self.config.username,
-                    password=self.config.password,
-                    authentication=SASL,
-                    sasl_mechanism=KERBEROS,
-                    auto_bind=True
-                )
-            else:
-                # NTLM authentication
-                logger.info("Connecting using NTLM authentication...")
-                user = self.config.username
-                if '\\' not in user and '@' not in user:
-                    if self.config.domain:
-                        user = f"{self.config.domain}\\{user}"
-
-                self.conn = Connection(
-                    server,
-                    user=user,
-                    password=self.config.password,
-                    authentication=NTLM,
-                    auto_bind=True
+        """Establish LDAP connection. Try LDAPS first, fall back to LDAP if it fails."""
+        # Determine which protocols to try
+        protocols_to_try = []
+        
+        if self.config.use_ssl:
+            # User explicitly requested SSL only
+            protocols_to_try = [(True, 636)]
+        else:
+            # Try LDAPS first, then fall back to LDAP
+            protocols_to_try = [(True, 636), (False, self.config.port)]
+        
+        last_error = None
+        
+        for use_ssl, port in protocols_to_try:
+            try:
+                protocol = "LDAPS" if use_ssl else "LDAP"
+                logger.info(f"Attempting connection via {protocol} on port {port}...")
+                
+                server = Server(
+                    self.config.domain_controller,
+                    port=port,
+                    use_ssl=use_ssl,
+                    get_info=ALL
                 )
 
-            if self.conn.bound:
-                logger.info("LDAP bind successful")
-                self._get_root_dse()
-                return True
-            else:
-                logger.error(f"LDAP bind failed: {self.conn.result}")
-                return False
+                if self.config.auth_method.lower() == 'kerberos':
+                    logger.info("Using Kerberos authentication...")
+                    self.conn = Connection(
+                        server,
+                        user=self.config.username,
+                        password=self.config.password,
+                        authentication=SASL,
+                        sasl_mechanism=KERBEROS,
+                        auto_bind=True
+                    )
+                else:
+                    # NTLM authentication
+                    logger.info("Using NTLM authentication...")
+                    user = self.config.username
+                    if '\\' not in user and '@' not in user:
+                        if self.config.domain:
+                            user = f"{self.config.domain}\\{user}"
 
-        except LDAPBindError as e:
-            logger.error(f"LDAP bind error: {e}")
-            return False
-        except LDAPException as e:
-            logger.error(f"LDAP error: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Connection error: {e}")
-            return False
+                    self.conn = Connection(
+                        server,
+                        user=user,
+                        password=self.config.password,
+                        authentication=NTLM,
+                        auto_bind=True
+                    )
+
+                if self.conn.bound:
+                    logger.info(f"Successfully connected via {protocol} on port {port}")
+                    self._get_root_dse()
+                    return True
+                else:
+                    logger.warning(f"{protocol} bind failed: {self.conn.result}")
+                    last_error = self.conn.result
+
+            except (LDAPBindError, LDAPException) as e:
+                logger.warning(f"{protocol} connection failed: {e}")
+                last_error = e
+                # Continue to next protocol
+                continue
+            except Exception as e:
+                logger.warning(f"{protocol} connection error: {e}")
+                last_error = e
+                # Continue to next protocol
+                continue
+        
+        # All protocols failed
+        logger.error(f"Failed to connect via all protocols. Last error: {last_error}")
+        return False
 
     def _get_root_dse(self):
         """Get root DSE information."""
@@ -3226,7 +3246,7 @@ Examples:
     parser.add_argument('--auth', choices=['ntlm', 'kerberos'], default='ntlm',
                        help='Authentication method (default: ntlm)')
     parser.add_argument('--ssl', action='store_true',
-                       help='Use SSL/TLS (LDAPS)')
+                       help='Force SSL/TLS (LDAPS). No LDAP fallback allowed.')
     parser.add_argument('--port', type=int, default=389,
                        help='LDAP port (default: 389, use 636 for LDAPS)')
     parser.add_argument('-o', '--output', default='',
@@ -3237,8 +3257,8 @@ Examples:
                        help='Number of threads (default: 10)')
     parser.add_argument('--dormant-days', type=int, default=90,
                        help='Days for dormant account threshold (default: 90)')
-    parser.add_argument('--password-age', type=int, default=30,
-                       help='Days for password age threshold (default: 30)')
+    parser.add_argument('--password-age', type=int, default=180,
+                       help='Days for password age threshold (default: 180)')
     parser.add_argument('--only-enabled', action='store_true',
                        help='Only collect enabled objects')
     parser.add_argument('--collect', default='default',
