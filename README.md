@@ -25,7 +25,7 @@ options:
   -d, --domain DOMAIN   Domain name (e.g., DOMAIN.LOCAL)
   --auth {ntlm,kerberos}
                         Authentication method (default: ntlm)
-  --ssl                 Use SSL/TLS (LDAPS)
+  --ssl                 Force SSL/TLS (LDAPS). No LDAP fallback allowed.
   --port PORT           LDAP port (default: 389, use 636 for LDAPS)
   -o, --output OUTPUT   Output directory (default: PyADRecon-Report-<timestamp>)
   --page-size PAGE_SIZE
@@ -34,9 +34,9 @@ options:
   --dormant-days DORMANT_DAYS
                         Days for dormant account threshold (default: 90)
   --password-age PASSWORD_AGE
-                        Days for password age threshold (default: 30)
+                        Days for password age threshold (default: 180)
   --only-enabled        Only collect enabled objects
-  --collect COLLECT     Comma-separated modules to collect (default: all except kerberoast,acls)
+  --collect COLLECT     Comma-separated modules to collect (default: all)
   --no-excel            Skip Excel report generation
   -v, --verbose         Verbose output
 
@@ -56,6 +56,11 @@ Examples:
   # Generate Excel report from existing CSV files (standalone mode)
   pyadrecon.py --generate-excel-from /path/to/CSV-Files -o report.xlsx
 ````
+
+>[!TIP]
+>PyADRecon always tries LDAPS on TCP/636 first.
+>
+>If flag `--ssl` is not used, LDAP on TCP/389 may be tried as fallback.
 
 ## Docker
 
