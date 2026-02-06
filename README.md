@@ -77,7 +77,7 @@ Examples:
 
 >[!CAUTION]
 >If LDAP channel binding is enabled, this script will fail. You have to use Kerberos authentication then.
->If you use Kerberos auth, please create a valid `/etc/krb5.conf` and DC in `/etc/hosts`.
+>If you use Kerberos auth, please create a valid `/etc/krb5.conf` and DC hostname entry in `/etc/hosts`.
 
 ## Docker
 
