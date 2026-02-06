@@ -53,7 +53,7 @@ try:
     IMPACKET_AVAILABLE = True
 except ImportError:
     IMPACKET_AVAILABLE = False
-    print("[*] impacket not available - Kerberoast and SMB features disabled")
+    print("[*] impacket not available - SMB features disabled")
 
 try:
     import openpyxl
@@ -382,8 +382,6 @@ class ADReconConfig:
     collect_computer_spns: bool = True
     collect_laps: bool = True
     collect_bitlocker: bool = True
-    collect_kerberoast: bool = False
-    collect_acls: bool = False
 
 
 class PyADRecon:
@@ -2537,48 +2535,6 @@ class PyADRecon:
         logger.info(f"    Found {len(results)} BitLocker recovery keys")
         return results
 
-    def collect_kerberoast(self) -> List[Dict]:
-        """Collect Kerberoastable accounts and request TGS tickets."""
-        logger.info("[-] Collecting Kerberoast - Requesting TGS tickets...")
-        results = []
-
-        if not IMPACKET_AVAILABLE:
-            logger.warning("[*] impacket not available - Kerberoast disabled")
-            return results
-
-        try:
-            # Get users with SPNs (excluding computers)
-            filter_str = "(&(objectCategory=person)(objectClass=user)(servicePrincipalName=*)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
-
-            entries = self.search(
-                self.base_dn,
-                filter_str,
-                ['sAMAccountName', 'servicePrincipalName', 'distinguishedName']
-            )
-
-            for entry in entries:
-                spns = get_attr_list(entry, 'servicePrincipalName')
-                username = get_attr(entry, 'sAMAccountName', '')
-                user_domain = dn_to_fqdn(str(get_attr(entry, 'distinguishedName', '')))
-
-                for spn in spns:
-                    # Note: Getting actual TGS tickets requires domain membership or valid TGT
-                    # This is a placeholder - actual implementation would use impacket's GetUserSPNs
-                    results.append({
-                        "Username": username,
-                        "ServicePrincipalName": str(spn),
-                        "Domain": user_domain,
-                        "John": f"$krb5tgs${spn}:<hash_would_be_here>",
-                        "Hashcat": f"$krb5tgs$23$*{username}${user_domain}${spn}*$<hash>",
-                    })
-
-        except Exception as e:
-            logger.warning(f"Error collecting Kerberoast: {e}")
-
-        self.results['Kerberoast'] = results
-        logger.info(f"    Found {len(results)} Kerberoastable accounts")
-        return results
-
     def collect_schema_history(self) -> List[Dict]:
         """Collect schema history/updates."""
         logger.info("[-] Collecting Schema History - May take some time...")
@@ -2740,9 +2696,6 @@ class PyADRecon:
 
         if self.config.collect_bitlocker:
             self.collect_bitlocker()
-
-        if self.config.collect_kerberoast:
-            self.collect_kerberoast()
 
         # Collect metadata about this run (always collect)
         self.collect_about()
@@ -3289,7 +3242,7 @@ Examples:
     parser.add_argument('--only-enabled', action='store_true',
                        help='Only collect enabled objects')
     parser.add_argument('--collect', default='default',
-                       help='Comma-separated modules to collect (default: all except kerberoast,acls)')
+                       help='Comma-separated modules to collect (default: all)')
     parser.add_argument('--no-excel', action='store_true',
                        help='Skip Excel report generation')
     parser.add_argument('-v', '--verbose', action='store_true',
@@ -3380,8 +3333,6 @@ Examples:
         config.collect_computer_spns = 'computerspns' in collect_modules
         config.collect_laps = 'laps' in collect_modules
         config.collect_bitlocker = 'bitlocker' in collect_modules
-        config.collect_kerberoast = 'kerberoast' in collect_modules
-        config.collect_acls = 'acls' in collect_modules
 
     # Create output directory
     if args.output:

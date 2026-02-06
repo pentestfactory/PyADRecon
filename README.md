@@ -99,10 +99,8 @@ docker run --rm -v ./:/tmp/pyadrecon_output ghcr.io/l4rm4nd/pyadrecon -dc 192.16
 **Security**
 - `passwordpolicy`
 - `fgpp` or `finegrainedpasswordpolicy`
-- `acls`
 - `laps`
 - `bitlocker`
-- `kerberoast` (tbd)
 
 **DNS**
 - `dnszones`
