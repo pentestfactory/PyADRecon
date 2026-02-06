@@ -1,3 +1,10 @@
+## [0.5.3](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.2...v0.5.3) (2026-02-06)
+
+
+### Bug Fixes
+
+* add ipv6 and ipv4 addresses from dns records to computer tab ([153f07d](https://github.com/l4rm4nd/PyADRecon/commit/153f07d09018ea15c474b256ca46ffb5db25e11d))
+
 ## [0.5.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.1...v0.5.2) (2026-02-06)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * support passing tgt for kerberos auth ([cf10787](https://github.com/l4rm4nd/PyADRecon/commit/cf10787e5c4b958c1656d6bb4f13ffacb3e1f4f4))
-
-## [0.3.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.3.0...v0.3.1) (2026-02-06)
-
-
-### Bug Fixes
-
-* adjust dockerfile for kerberos ([cdcf62d](https://github.com/l4rm4nd/PyADRecon/commit/cdcf62d92bd6035b256f62150f6d70e07e850ab6))
 
