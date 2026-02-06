@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import logging
 import threading
+import subprocess
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Third-party imports
@@ -35,12 +37,24 @@ LDAPBindError = Exception
 
 try:
     import ldap3
-    from ldap3 import Server, Connection, ALL, NTLM, KERBEROS, SASL, SUBTREE, BASE, ALL_ATTRIBUTES
+    from ldap3 import Server, Connection, ALL, NTLM, KERBEROS, SASL, SUBTREE, BASE, ALL_ATTRIBUTES, Tls
     from ldap3.core.exceptions import LDAPException, LDAPBindError
     from ldap3.utils.conv import escape_filter_chars
     LDAP3_AVAILABLE = True
 except ImportError:
     pass
+
+# Check for Kerberos SASL packages
+KERBEROS_AVAILABLE = False
+try:
+    import gssapi
+    KERBEROS_AVAILABLE = True
+except ImportError:
+    try:
+        import winkerberos
+        KERBEROS_AVAILABLE = True
+    except ImportError:
+        pass
 
 try:
     from impacket.krb5.kerberosv5 import getKerberosTGT, getKerberosTGS
@@ -62,6 +76,10 @@ try:
 except ImportError:
     OPENPYXL_AVAILABLE = False
     print("[*] openpyxl not available - Excel export disabled")
+
+if not KERBEROS_AVAILABLE:
+    print("[*] gssapi/winkerberos not available - Kerberos authentication disabled")
+    print("[*] Install with: pip install gssapi (Linux) or pip install winkerberos (Windows)")
 
 
 # Constants
@@ -416,22 +434,71 @@ class PyADRecon:
                 protocol = "LDAPS" if use_ssl else "LDAP"
                 logger.info(f"Attempting connection via {protocol} on port {port}...")
                 
+                # Configure TLS to handle channel binding issues
+                tls_config = None
+                if use_ssl:
+                    tls_config = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLSv1_2)
+                
                 server = Server(
                     self.config.domain_controller,
                     port=port,
                     use_ssl=use_ssl,
+                    tls=tls_config,
                     get_info=ALL
                 )
 
                 if self.config.auth_method.lower() == 'kerberos':
+                    if not KERBEROS_AVAILABLE:
+                        logger.error("Kerberos authentication requested but gssapi/winkerberos not installed")
+                        logger.error("Install with: pip install gssapi (Linux) or pip install winkerberos (Windows)")
+                        return False
+                    
                     logger.info("Using Kerberos authentication...")
+                    
+                    # Format user principal for Kerberos
+                    user_principal = self.config.username
+                    if '@' not in user_principal and self.config.domain:
+                        user_principal = f"{self.config.username}@{self.config.domain.upper()}"
+                    
+                    # Obtain Kerberos ticket using kinit if password provided
+                    if self.config.password:
+                        logger.info(f"Obtaining Kerberos ticket for {user_principal}...")
+                        try:
+                            # Use kinit to obtain ticket with password
+                            kinit_proc = subprocess.Popen(
+                                ['kinit', user_principal],
+                                stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                text=True
+                            )
+                            stdout, stderr = kinit_proc.communicate(input=self.config.password + '\n', timeout=10)
+                            
+                            if kinit_proc.returncode != 0:
+                                logger.error(f"Failed to obtain Kerberos ticket: {stderr.strip()}")
+                                logger.error("Make sure Kerberos is configured (/etc/krb5.conf) and KDC is reachable")
+                                return False
+                            
+                            logger.info("Successfully obtained Kerberos ticket")
+                        except FileNotFoundError:
+                            logger.error("kinit command not found. Install Kerberos client: apt install krb5-user (Debian/Ubuntu) or yum install krb5-workstation (RHEL/CentOS)")
+                            return False
+                        except subprocess.TimeoutExpired:
+                            logger.error("kinit timed out. Kerberos port (88/TCP) may be blocked by firewall")
+                            logger.error(f"Check with: nmap -p 88 {self.config.domain_controller}")
+                            logger.error("Use NTLM authentication instead: remove --auth kerberos")
+                            return False
+                        except Exception as e:
+                            logger.error(f"Error obtaining Kerberos ticket: {e}")
+                            return False
+                    
                     self.conn = Connection(
                         server,
-                        user=self.config.username,
-                        password=self.config.password,
+                        user=user_principal,
                         authentication=SASL,
                         sasl_mechanism=KERBEROS,
-                        auto_bind=True
+                        auto_bind=True,
+                        auto_referrals=False
                     )
                 else:
                     # NTLM authentication
@@ -446,7 +513,8 @@ class PyADRecon:
                         user=user,
                         password=self.config.password,
                         authentication=NTLM,
-                        auto_bind=True
+                        auto_bind=True,
+                        auto_referrals=False
                     )
 
                 if self.conn.bound:
@@ -458,13 +526,69 @@ class PyADRecon:
                     last_error = self.conn.result
 
             except (LDAPBindError, LDAPException) as e:
+                error_msg = str(e)
                 logger.warning(f"{protocol} connection failed: {e}")
                 last_error = e
+                
+                # Provide helpful guidance for common Kerberos errors
+                if self.config.auth_method.lower() == 'kerberos':
+                    if 'No Kerberos credentials available' in error_msg or 'No credentials were supplied' in error_msg:
+                        logger.error("No Kerberos ticket available.")
+                        logger.error(f"Obtain a ticket first with: kinit {self.config.username}@{self.config.domain.upper() if self.config.domain else 'DOMAIN.LOCAL'}")
+                        logger.error("Or use NTLM authentication: remove --auth kerberos")
+                        return False
+                    elif 'does not specify default realm' in error_msg or 'Configuration file' in error_msg:
+                        logger.error("Kerberos is not configured on this system.")
+                        logger.error("Create /etc/krb5.conf with the following content:")
+                        logger.error(f"""
+[libdefaults]
+    default_realm = {self.config.domain.upper() if self.config.domain else 'DOMAIN.LOCAL'}
+    dns_lookup_kdc = true
+    dns_lookup_realm = true
+
+[realms]
+    {self.config.domain.upper() if self.config.domain else 'DOMAIN.LOCAL'} = {{
+        kdc = {self.config.domain_controller}
+        admin_server = {self.config.domain_controller}
+    }}
+
+[domain_realm]
+    .{self.config.domain.lower() if self.config.domain else 'domain.local'} = {self.config.domain.upper() if self.config.domain else 'DOMAIN.LOCAL'}
+    {self.config.domain.lower() if self.config.domain else 'domain.local'} = {self.config.domain.upper() if self.config.domain else 'DOMAIN.LOCAL'}
+""")
+                        logger.error("\nOr use NTLM authentication: remove --auth kerberos")
+                        return False
+                    elif 'Cannot find KDC' in error_msg or 'Cannot contact' in error_msg:
+                        logger.error("Cannot contact Kerberos KDC. Check network connectivity and DNS resolution.")
+                        return False
+                
                 # Continue to next protocol
                 continue
             except Exception as e:
+                error_msg = str(e)
                 logger.warning(f"{protocol} connection error: {e}")
                 last_error = e
+                
+                # Provide helpful guidance for common Kerberos errors
+                if self.config.auth_method.lower() == 'kerberos':
+                    if 'Server not found in Kerberos database' in error_msg:
+                        logger.error("Kerberos SPN lookup failed. Kerberos requires a hostname, not an IP address.")
+                        logger.error(f"Use the DC hostname instead: -dc dc1.{self.config.domain.lower() if self.config.domain else 'domain.local'}")
+                        logger.error("Or use NTLM authentication: remove --auth kerberos")
+                        return False
+                    elif 'No Kerberos credentials available' in error_msg or 'No credentials were supplied' in error_msg:
+                        logger.error("No Kerberos ticket available.")
+                        logger.error(f"Obtain a ticket first with: kinit {self.config.username}@{self.config.domain.upper() if self.config.domain else 'DOMAIN.LOCAL'}")
+                        logger.error("Or use NTLM authentication: remove --auth kerberos")
+                        return False
+                    elif 'does not specify default realm' in error_msg or 'Configuration file' in error_msg:
+                        logger.error("Kerberos is not configured on this system.")
+                        logger.error("Create /etc/krb5.conf with:")
+                        logger.error(f"  [libdefaults]")
+                        logger.error(f"    default_realm = {self.config.domain.upper() if self.config.domain else 'DOMAIN.LOCAL'}")
+                        logger.error("Or use NTLM authentication: remove --auth kerberos")
+                        return False
+                
                 # Continue to next protocol
                 continue
         
