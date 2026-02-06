@@ -375,6 +375,8 @@ class ADReconConfig:
     password_age_days: int = 180
     output_dir: str = ""
     only_enabled: bool = False
+    tgt_file: str = ""  # Path to TGT ccache file
+    tgt_base64: str = ""  # Base64-encoded TGT ccache
 
     # Collection flags
     collect_forest: bool = True
@@ -460,8 +462,47 @@ class PyADRecon:
                     if '@' not in user_principal and self.config.domain:
                         user_principal = f"{self.config.username}@{self.config.domain.upper()}"
                     
+                    # Handle TGT token input (file or base64 string)
+                    if self.config.tgt_file or self.config.tgt_base64:
+                        logger.info("Using provided TGT token...")
+                        try:
+                            import base64
+                            ccache_data = None
+                            
+                            if self.config.tgt_file:
+                                logger.info(f"Loading TGT from file: {self.config.tgt_file}")
+                                with open(self.config.tgt_file, 'rb') as f:
+                                    ccache_data = f.read()
+                            elif self.config.tgt_base64:
+                                logger.info("Loading TGT from base64 string...")
+                                ccache_data = base64.b64decode(self.config.tgt_base64)
+                            
+                            if ccache_data:
+                                # Write to temporary ccache file
+                                ccache_path = tempfile.NamedTemporaryFile(delete=False, prefix='krb5cc_').name
+                                with open(ccache_path, 'wb') as f:
+                                    f.write(ccache_data)
+                                
+                                # Set KRB5CCNAME environment variable
+                                os.environ['KRB5CCNAME'] = ccache_path
+                                logger.info(f"TGT loaded successfully, ccache set to: {ccache_path}")
+                                
+                                # Verify the ticket if impacket is available
+                                if IMPACKET_AVAILABLE:
+                                    try:
+                                        ccache = CCache.loadFile(ccache_path)
+                                        principal = ccache.principal.prettyPrint()
+                                        logger.info(f"TGT principal: {principal}")
+                                    except Exception as e:
+                                        logger.warning(f"Could not parse ccache file: {e}")
+                        except FileNotFoundError:
+                            logger.error(f"TGT file not found: {self.config.tgt_file}")
+                            return False
+                        except Exception as e:
+                            logger.error(f"Error loading TGT: {e}")
+                            return False
                     # Obtain Kerberos ticket using kinit if password provided
-                    if self.config.password:
+                    elif self.config.password:
                         logger.info(f"Obtaining Kerberos ticket for {user_principal}...")
                         try:
                             # Use kinit to obtain ticket with password
@@ -3338,8 +3379,14 @@ Examples:
   # Basic usage with NTLM authentication
   %(prog)s -dc 192.168.1.1 -u admin -p password123 -d DOMAIN.LOCAL
 
-  # With Kerberos authentication
+  # With Kerberos authentication (bypasses channel binding)
   %(prog)s -dc dc01.domain.local -u admin -p password123 -d DOMAIN.LOCAL --auth kerberos
+
+  # With Kerberos using TGT from file (bypasses channel binding)
+  %(prog)s -dc dc01.domain.local -u admin -d DOMAIN.LOCAL --auth kerberos --tgt-file /tmp/admin.ccache
+
+  # With Kerberos using TGT from base64 string (bypasses channel binding)
+  %(prog)s -dc dc01.domain.local -u admin -d DOMAIN.LOCAL --auth kerberos --tgt-base64 BQQAAAw...
 
   # Only collect specific modules
   %(prog)s -dc 192.168.1.1 -u admin -p pass -d DOMAIN.LOCAL --collect users,groups,computers
@@ -3361,14 +3408,18 @@ Examples:
                        help='Domain Controller IP or hostname')
     parser.add_argument('-u', '--username', default='',
                        help='Username for authentication')
-    parser.add_argument('-p', '--password', default='',
-                       help='Password for authentication')
+    parser.add_argument('-p', '--password', nargs='?', default='', const='',
+                       help='Password for authentication (optional if using TGT)')
 
     # Optional arguments
-    parser.add_argument('-d', '--domain', default='',
-                       help='Domain name (e.g., DOMAIN.LOCAL)')
+    parser.add_argument('-d', '--domain', required=False, default='',
+                       help='Domain name (e.g., DOMAIN.LOCAL) - Required for Kerberos auth')
     parser.add_argument('--auth', choices=['ntlm', 'kerberos'], default='ntlm',
                        help='Authentication method (default: ntlm)')
+    parser.add_argument('--tgt-file', default='',
+                       help='Path to Kerberos TGT ccache file (for Kerberos auth)')
+    parser.add_argument('--tgt-base64', default='',
+                       help='Base64-encoded Kerberos TGT ccache (for Kerberos auth)')
     parser.add_argument('--ssl', action='store_true',
                        help='Force SSL/TLS (LDAPS). No LDAP fallback allowed.')
     parser.add_argument('--port', type=int, default=389,
@@ -3416,10 +3467,21 @@ Examples:
             sys.exit(1)
 
     # Check required arguments for normal mode
-    if not args.domain_controller or not args.username or not args.password:
-        print("[!] Error: -dc, -u, and -p are required for AD reconnaissance mode")
+    if not args.domain_controller or not args.username or not args.domain:
+        print("[!] Error: -dc, -u, and -d are required for AD reconnaissance mode")
+        print("[!] Example: -dc dc1.domain.local -u admin -d DOMAIN.LOCAL")
         print("[!] Use --generate-excel-from for standalone Excel generation from CSV files")
         sys.exit(1)
+    
+    # Check password requirement (not needed if using TGT)
+    if not args.password and not args.tgt_file and not args.tgt_base64:
+        print("[!] Error: Either -p (password), --tgt-file, or --tgt-base64 is required")
+        sys.exit(1)
+    
+    # Auto-enable Kerberos authentication if TGT is provided
+    if (args.tgt_file or args.tgt_base64) and args.auth != 'kerberos':
+        logger.info("TGT token detected - automatically switching to Kerberos authentication")
+        args.auth = 'kerberos'
 
     # Check for required library
     if not LDAP3_AVAILABLE:
@@ -3447,6 +3509,8 @@ Examples:
         dormant_days=args.dormant_days,
         password_age_days=args.password_age,
         only_enabled=args.only_enabled,
+        tgt_file=args.tgt_file,
+        tgt_base64=args.tgt_base64,
     )
 
     # Configure collection based on modules
