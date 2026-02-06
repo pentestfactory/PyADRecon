@@ -2647,6 +2647,22 @@ class PyADRecon:
         results = []
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
+        # Build hostname-to-IP mapping from DNS records if available
+        hostname_to_ip = {}
+        hostname_to_ipv6 = {}
+        if 'DNSRecords' in self.results and self.results['DNSRecords']:
+            for record in self.results['DNSRecords']:
+                if record.get('RecordType') == 'A':
+                    hostname = record.get('Name', '').rstrip('.')
+                    ip = record.get('Data', '')
+                    if hostname and ip:
+                        hostname_to_ip[hostname.lower()] = ip
+                elif record.get('RecordType') == 'AAAA':
+                    hostname = record.get('Name', '').rstrip('.')
+                    ipv6 = record.get('Data', '')
+                    if hostname and ipv6:
+                        hostname_to_ipv6[hostname.lower()] = ipv6
+
         try:
             # Collect both computer objects AND user accounts ending in $ (service accounts)
             # Filter 1: Computer objects
@@ -2785,12 +2801,23 @@ class PyADRecon:
                 creator_sid = get_attr(entry, 'ms-ds-CreatorSid')
                 creator_sid_str = sid_to_string(creator_sid) if creator_sid else ""
 
+                # Get IP addresses from collected DNS records
+                ipv4_address = ""
+                ipv6_address = ""
+                dns_hostname = get_attr(entry, 'dNSHostName', '')
+                if dns_hostname:
+                    # Extract just the hostname part (before first dot) for lookup
+                    hostname_part = dns_hostname.split('.')[0].lower()
+                    ipv4_address = hostname_to_ip.get(hostname_part, '')
+                    ipv6_address = hostname_to_ipv6.get(hostname_part, '')
+
                 results.append({
                     "UserName": get_attr(entry, 'sAMAccountName', ''),
                     "Name": get_attr(entry, 'name', ''),
-                    "DNSHostName": get_attr(entry, 'dNSHostName', ''),
+                    "DNSHostName": dns_hostname,
                     "Enabled": uac_parsed.get('Enabled', ''),
-                    "IPv4Address": "",  # This requires DNS resolution
+                    "IPv4Address": ipv4_address,
+                    "IPv6Address": ipv6_address,
                     "Operating System": os_full,
                     "Logon Age (days)": logon_age_days,
                     "Password Age (days)": pwd_age_days,
