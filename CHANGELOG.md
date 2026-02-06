@@ -1,3 +1,10 @@
+## [0.2.8](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.7...v0.2.8) (2026-02-06)
+
+
+### Bug Fixes
+
+* add domain join info in about tab ([ead80f1](https://github.com/l4rm4nd/PyADRecon/commit/ead80f19521ebfc1c6a5e783e3aa527dae4e62f0))
+
 ## [0.2.7](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.6...v0.2.7) (2026-02-06)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * UTC timezone parsing ([72615a4](https://github.com/l4rm4nd/PyADRecon/commit/72615a4f09bfb3aa11bdc4e9becfafe1b722180d))
-
-## [0.2.3](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.2...v0.2.3) (2026-02-05)
-
-
-### Bug Fixes
-
-* reduce docker image size and fix toc links + add pyadrecon version into excel ([745b4fd](https://github.com/l4rm4nd/PyADRecon/commit/745b4fda5ff470b5076157a7c4490849ef881070))
 
