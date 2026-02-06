@@ -76,7 +76,7 @@ Examples:
 >If flag `--ssl` is not used, LDAP on TCP/389 may be tried as fallback.
 
 >[!CAUTION]
->LDAP channel binding may brick LDAP auth. Use Kerberos auth then.
+>If you use Kerberos authentication, please create a valid `/etc/krb5.conf`.
 
 ## Docker
 
