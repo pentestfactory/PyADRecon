@@ -75,8 +75,7 @@ docker run --rm -v ./:/tmp/pyadrecon_output ghcr.io/l4rm4nd/pyadrecon -dc 192.16
 - `trusts`
 - `sites`
 - `subnets`
-- `schema`
-- `schemahistory`
+- `schema` or `schemahistory`
 
 **Domain Controllers**
 - `dcs` or `domaincontrollers`
