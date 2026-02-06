@@ -1,3 +1,10 @@
+## [0.3.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.3.0...v0.3.1) (2026-02-06)
+
+
+### Bug Fixes
+
+* adjust dockerfile for kerberos ([cdcf62d](https://github.com/l4rm4nd/PyADRecon/commit/cdcf62d92bd6035b256f62150f6d70e07e850ab6))
+
 ## [0.3.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.8...v0.3.0) (2026-02-06)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * remove obsolete collection methods ([8adbeb9](https://github.com/l4rm4nd/PyADRecon/commit/8adbeb944f50a537302dc8c26b88c7c04a1118eb))
-
-## [0.2.5](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.4...v0.2.5) (2026-02-05)
-
-
-### Bug Fixes
-
-* use UTC timezone universally ([2c207fc](https://github.com/l4rm4nd/PyADRecon/commit/2c207fce14ac9037e09c0a6c86788a16dbe68e95))
 
