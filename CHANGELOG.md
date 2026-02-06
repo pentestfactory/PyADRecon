@@ -1,3 +1,10 @@
+## [0.5.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.4.0...v0.5.0) (2026-02-06)
+
+
+### Features
+
+* add user and computer stats; also fix cannot-change-password and reversible-password-encryption ([4164512](https://github.com/l4rm4nd/PyADRecon/commit/416451289442c3e8782d15cd96e589fd6103dcc7))
+
 ## [0.4.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.3.1...v0.4.0) (2026-02-06)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * add domain join info in about tab ([ead80f1](https://github.com/l4rm4nd/PyADRecon/commit/ead80f19521ebfc1c6a5e783e3aa527dae4e62f0))
-
-## [0.2.7](https://github.com/l4rm4nd/PyADRecon/compare/v0.2.6...v0.2.7) (2026-02-06)
-
-
-### Bug Fixes
-
-* always try ldaps first + adjust password age threshold ([f3b6c1c](https://github.com/l4rm4nd/PyADRecon/commit/f3b6c1c2f632d3d8ca0ead344639674e799ea8d7))
 
