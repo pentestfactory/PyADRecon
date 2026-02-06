@@ -20,8 +20,9 @@ pip install -r requirements.txt
 ## Usage
 
 ````py
-usage: pyadrecon.py [-h] [--generate-excel-from CSV_DIR] [-dc DOMAIN_CONTROLLER] [-u USERNAME] [-p PASSWORD] [-d DOMAIN] [--auth {ntlm,kerberos}] [--ssl] [--port PORT] [-o OUTPUT]
-                    [--page-size PAGE_SIZE] [--threads THREADS] [--dormant-days DORMANT_DAYS] [--password-age PASSWORD_AGE] [--only-enabled] [--collect COLLECT] [--no-excel] [-v]
+usage: pyadrecon.py [-h] [--generate-excel-from CSV_DIR] [-dc DOMAIN_CONTROLLER] [-u USERNAME] [-p [PASSWORD]] [-d DOMAIN] [--auth {ntlm,kerberos}] [--tgt-file TGT_FILE] [--tgt-base64 TGT_BASE64]
+                    [--ssl] [--port PORT] [-o OUTPUT] [--page-size PAGE_SIZE] [--threads THREADS] [--dormant-days DORMANT_DAYS] [--password-age PASSWORD_AGE] [--only-enabled] [--collect COLLECT]
+                    [--no-excel] [-v]
 
 PyADRecon - Python Active Directory Reconnaissance Tool
 
@@ -33,11 +34,14 @@ options:
                         Domain Controller IP or hostname
   -u, --username USERNAME
                         Username for authentication
-  -p, --password PASSWORD
-                        Password for authentication
-  -d, --domain DOMAIN   Domain name (e.g., DOMAIN.LOCAL)
+  -p, --password [PASSWORD]
+                        Password for authentication (optional if using TGT)
+  -d, --domain DOMAIN   Domain name (e.g., DOMAIN.LOCAL) - Required for Kerberos auth
   --auth {ntlm,kerberos}
                         Authentication method (default: ntlm)
+  --tgt-file TGT_FILE   Path to Kerberos TGT ccache file (for Kerberos auth)
+  --tgt-base64 TGT_BASE64
+                        Base64-encoded Kerberos TGT ccache (for Kerberos auth)
   --ssl                 Force SSL/TLS (LDAPS). No LDAP fallback allowed.
   --port PORT           LDAP port (default: 389, use 636 for LDAPS)
   -o, --output OUTPUT   Output directory (default: PyADRecon-Report-<timestamp>)
@@ -57,8 +61,14 @@ Examples:
   # Basic usage with NTLM authentication
   pyadrecon.py -dc 192.168.1.1 -u admin -p password123 -d DOMAIN.LOCAL
 
-  # With Kerberos authentication
+  # With Kerberos authentication (bypasses channel binding)
   pyadrecon.py -dc dc01.domain.local -u admin -p password123 -d DOMAIN.LOCAL --auth kerberos
+
+  # With Kerberos using TGT from file (bypasses channel binding)
+  pyadrecon.py -dc dc01.domain.local -u admin -d DOMAIN.LOCAL --auth kerberos --tgt-file /tmp/admin.ccache
+
+  # With Kerberos using TGT from base64 string (bypasses channel binding)
+  pyadrecon.py -dc dc01.domain.local -u admin -d DOMAIN.LOCAL --auth kerberos --tgt-base64 BQQAAAw...
 
   # Only collect specific modules
   pyadrecon.py -dc 192.168.1.1 -u admin -p pass -d DOMAIN.LOCAL --collect users,groups,computers
@@ -78,7 +88,7 @@ Examples:
 >[!CAUTION]
 >If LDAP channel binding is enabled, this script will fail with `automatic bind not successful - strongerAuthRequired` as ldap3 does not support it. You would have to use Kerberos authentication instead.
 >
->If you use Kerberos auth, please create a valid `/etc/krb5.conf` and DC hostname entry in `/etc/hosts`. May read [this](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=32628#KerberosClientConfiguration-*NIX/etc/krb5.confConfiguration).
+>If you use Kerberos auth, please create a valid `/etc/krb5.conf` and DC hostname entry in `/etc/hosts`. May read [this](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=32628#KerberosClientConfiguration-*NIX/etc/krb5.confConfiguration). Note that you can provide an already existing TGT ticket to the script via `--tgt-file` or `--tgt-base64`. For example obtained via Netexec and `netexec smb --generate-tgt`.
 
 ## Docker
 
