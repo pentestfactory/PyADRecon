@@ -13,11 +13,23 @@ git clone https://github.com/l4rm4nd/PyADRecon && cd PyADRecon
 # create virtual environment
 virtualenv venv && source venv/bin/activate
 
-# installd dependencies
+# install dependencies
 pip install -r requirements.txt
 ````
 
 ## Usage
+
+>[!TIP]
+>PyADRecon always tries LDAPS on TCP/636 first.
+>
+>If flag `--ssl` is not used, LDAP on TCP/389 may be tried as fallback.
+
+>[!WARNING]
+>If LDAP channel binding is enabled, this script will fail with `automatic bind not successful - strongerAuthRequired`, as ldap3 does not support it (see [here](https://github.com/cannatag/ldap3/issues/1049#issuecomment-1222826803)). You must use Kerberos authentication instead.
+>
+>If you use Kerberos auth, please create a valid `/etc/krb5.conf` and DC hostname entry in `/etc/hosts`. May read [this](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=32628#KerberosClientConfiguration-*NIX/etc/krb5.confConfiguration).
+>
+>Note that you can provide an already existing TGT ticket to the script via `--tgt-file` or `--tgt-base64`. For example, obtained by Netexec via `netexec smb <TARGET> <ARGS> --generate-tgt <FILEMAME>`.
 
 ````py
 usage: pyadrecon.py [-h] [--generate-excel-from CSV_DIR] [-dc DOMAIN_CONTROLLER] [-u USERNAME] [-p [PASSWORD]] [-d DOMAIN] [--auth {ntlm,kerberos}] [--tgt-file TGT_FILE] [--tgt-base64 TGT_BASE64]
@@ -80,27 +92,19 @@ Examples:
   pyadrecon.py --generate-excel-from /path/to/CSV-Files -o report.xlsx
 ````
 
->[!TIP]
->PyADRecon always tries LDAPS on TCP/636 first.
->
->If flag `--ssl` is not used, LDAP on TCP/389 may be tried as fallback.
-
->[!CAUTION]
->If LDAP channel binding is enabled, this script will fail with `automatic bind not successful - strongerAuthRequired` as ldap3 does not support it. You would have to use Kerberos authentication instead.
->
->If you use Kerberos auth, please create a valid `/etc/krb5.conf` and DC hostname entry in `/etc/hosts`. May read [this](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=32628#KerberosClientConfiguration-*NIX/etc/krb5.confConfiguration). Note that you can provide an already existing TGT ticket to the script via `--tgt-file` or `--tgt-base64`. For example obtained via Netexec and `netexec smb --generate-tgt my-tgt-file`.
-
 ## Docker
 
 There is also a Docker image available on GHCR.IO.
 
 ````
-docker run --rm -v ./:/tmp/pyadrecon_output ghcr.io/l4rm4nd/pyadrecon -dc 192.168.1.1 -u admin -p pass -d DOMAIN.LOCAL -o /tmp/pyadrecon_output
+docker run --rm -v /etc/krb5.conf:/etc/krb5.conf:ro -v /etc/hosts:/etc/hosts:ro -v ./:/tmp/pyadrecon_output ghcr.io/l4rm4nd/pyadrecon:latest -dc dc01.domain.local -u admin -p password123 -d DOMAIN.LOCAL -o /tmp/pyadrecon_output
 ````
 
 ## Collection Modules
 
-- `default` or `all`
+As default, PyADRecon runs all collection modules. They are referenced to as `default` or `all`.
+
+Though, you can freely select your own collection of modules to run:
 
 **Forest & Domain**
 - `forest`
