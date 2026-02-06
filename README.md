@@ -65,7 +65,7 @@ There is also a Docker image available on GHCR.IO.
 docker run --rm -v ./:/tmp/pyadrecon_output ghcr.io/l4rm4nd/pyadrecon -dc 192.168.1.1 -u admin -p pass -d DOMAIN.LOCAL -o /tmp/pyadrecon_output
 ````
 
-## Available Collection Modules
+## Collection Modules
 
 - `default` or `all`
 
@@ -86,9 +86,10 @@ docker run --rm -v ./:/tmp/pyadrecon_output ghcr.io/l4rm4nd/pyadrecon -dc 192.16
 - `groups`
 - `groupmembers`
 
-**Computers**
+**Computers & Printers**
 - `computers`
 - `computerspns`
+- `printers`
 
 **OUs & Group Policy**
 - `ous`
@@ -100,15 +101,12 @@ docker run --rm -v ./:/tmp/pyadrecon_output ghcr.io/l4rm4nd/pyadrecon -dc 192.16
 - `fgpp` or `finegrainedpasswordpolicy`
 - `kerberoast`
 - `acls`
+- `laps`
+- `bitlocker`
 
 **DNS**
 - `dnszones`
 - `dnsrecords`
-
-**Infrastructure**
-- `printers`
-- `laps`
-- `bitlocker`
 
 ## Acknowledgements
 
