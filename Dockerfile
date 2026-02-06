@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libxml2-dev \
     libxslt1-dev \
+    libkrb5-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python packages
@@ -26,6 +27,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl3 \
     libxml2 \
     libxslt1.1 \
+    libkrb5-3 \
+    krb5-user \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure OpenSSL to enable legacy providers (required for MD4/NTLM)
