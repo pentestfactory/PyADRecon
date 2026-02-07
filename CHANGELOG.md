@@ -1,3 +1,10 @@
+## [0.6.3](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.2...v0.6.3) (2026-02-07)
+
+
+### Bug Fixes
+
+* fixate py packages ([959b635](https://github.com/l4rm4nd/PyADRecon/commit/959b63547dca8bbc699c81d60de2ecc66d8f343f))
+
 ## [0.6.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.1...v0.6.2) (2026-02-07)
 
 
@@ -30,11 +37,4 @@
 ### Bug Fixes
 
 * properly parse 0 value for password policies ([739fdb7](https://github.com/l4rm4nd/PyADRecon/commit/739fdb704ead7983632639a874740cb7bd700a1b))
-
-## [0.5.3](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.2...v0.5.3) (2026-02-06)
-
-
-### Bug Fixes
-
-* add ipv6 and ipv4 addresses from dns records to computer tab ([153f07d](https://github.com/l4rm4nd/PyADRecon/commit/153f07d09018ea15c474b256ca46ffb5db25e11d))
 
