@@ -159,3 +159,19 @@ Many thanks to the following folks:
 - [cannatag](https://github.com/cannatag) for the awesome ldap3 Python client
 - [Forta](https://github.com/fortra) for the awesome impacket suite
 - [Anthropic](https://github.com/anthropics) for Claude LLMs
+
+## License
+
+**PyADRecon** is released under the **MIT License**.
+
+The following third-party libraries are used:
+
+| Library     | License        |
+|-------------|----------------|
+| ldap3       | LGPL v3        |
+| openpyxl    | MIT            |
+| gssapi      | MIT            |
+| impacket    | Apache 2.0     |
+| winkerberos | Apache 2.0     |
+
+Please refer to the respective licenses of these libraries when using or redistributing this software.
