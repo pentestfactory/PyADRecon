@@ -145,4 +145,7 @@ Though, you can freely select your own collection of modules to run:
 
 ## Acknowledgements
 
-Many thanks to [S3cur3Th1sSh1t](https://github.com/S3cur3Th1sSh1t/AI-Coded-scripts) and Claude for a first version.
+Many thanks to the following folks:
+ - [S3cur3Th1sSh1t](https://github.com/S3cur3Th1sSh1t) for a first Claude draft of this Python3 port 
+- [Sense-of-Security](https://github.com/sense-of-security) for the original ADRecon script in PowerShell
+- [cannatag](https://github.com/cannatag) for the awesome ldap3 Python client 
