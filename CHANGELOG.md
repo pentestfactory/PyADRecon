@@ -1,3 +1,10 @@
+## [0.6.5](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.4...v0.6.5) (2026-02-07)
+
+
+### Bug Fixes
+
+* remove obsolete argparse --threads ([baed441](https://github.com/l4rm4nd/PyADRecon/commit/baed441f1ed7aad74b86356fa9159c958a323cf7))
+
 ## [0.6.4](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.3...v0.6.4) (2026-02-07)
 
 
@@ -25,16 +32,4 @@
 ### Bug Fixes
 
 * adjust enabled coloring ([4ddba17](https://github.com/l4rm4nd/PyADRecon/commit/4ddba1726b455ff7a9c2680fc56637e1afacba84))
-
-## [0.6.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.4...v0.6.0) (2026-02-07)
-
-
-### Features
-
-* auto-coloring of important things ([f7651cc](https://github.com/l4rm4nd/PyADRecon/commit/f7651cc38ab8e61a131c0eb6dd8c99756f1dd301))
-
-
-### Bug Fixes
-
-* updated pw policy recommendations ([c9346cb](https://github.com/l4rm4nd/PyADRecon/commit/c9346cb8bfd0c84cbf23b8163df07479af7e697d))
 
