@@ -1,3 +1,10 @@
+## [0.6.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.0...v0.6.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* adjust enabled coloring ([4ddba17](https://github.com/l4rm4nd/PyADRecon/commit/4ddba1726b455ff7a9c2680fc56637e1afacba84))
+
 ## [0.6.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.4...v0.6.0) (2026-02-07)
 
 
@@ -30,11 +37,4 @@
 ### Bug Fixes
 
 * toc, about and printer tab ([f4d9ac5](https://github.com/l4rm4nd/PyADRecon/commit/f4d9ac5cabb92c986835c4d92fab405113d96c71))
-
-## [0.5.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.0...v0.5.1) (2026-02-06)
-
-
-### Bug Fixes
-
-* toc sorting ([26e44d8](https://github.com/l4rm4nd/PyADRecon/commit/26e44d889713edccb7e95d9029624d29768e10f7))
 
