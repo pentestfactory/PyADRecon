@@ -3244,7 +3244,14 @@ class PyADRecon:
         return csv_dir
 
     def apply_security_formatting(self, wb):
-        """Apply conditional formatting to highlight security issues in Users and Computers sheets."""
+        """Apply conditional formatting to highlight security issues in Users and Computers sheets.
+        
+        Color scheme:
+        - Red: Critical security issues (e.g., password never expires, unconstrained delegation)
+        - Orange: Medium security issues (e.g., SPNs, password age)
+        - Yellow: Informational/warnings (e.g., dormant accounts, never logged in, disabled status)
+        - Gray: Disabled accounts (row background, unless overridden by security colors)
+        """
         from openpyxl.styles import PatternFill
         
         # Define color schemes for security issues
@@ -3295,12 +3302,10 @@ class PyADRecon:
                         enabled_cell = ws.cell(row=row_idx, column=headers["Enabled"])
                         if enabled_cell.value in [False, "FALSE"]:
                             is_disabled = True
-                            # Color Enabled cell red for disabled
-                            enabled_cell.fill = red_fill
-                        elif enabled_cell.value in [True, "TRUE"]:
-                            # Color Enabled cell green for enabled
-                            green_fill = PatternFill(start_color="B3FFB3", end_color="B3FFB3", fill_type="solid")
-                            enabled_cell.fill = green_fill
+                            # Color Enabled cell yellow for disabled accounts (informational/warning)
+                            # Yellow indicates account status without implying "bad" (red) or "good" (green)
+                            enabled_cell.fill = yellow_fill
+                        # Enabled accounts remain uncolored (neutral state)
                     
                     # RED: Critical security issues
                     for col_name, (check_val, str_val) in red_columns.items():
@@ -3329,7 +3334,7 @@ class PyADRecon:
                         for col in range(1, ws.max_column + 1):
                             # Only gray cells that haven't been colored by security issues
                             cell = ws.cell(row=row_idx, column=col)
-                            # Skip the Enabled column itself (keep it red)
+                            # Skip the Enabled column itself (keep it yellow)
                             if col != headers.get("Enabled"):
                                 # Keep security highlighting visible
                                 if cell.fill.start_color.rgb not in ["00FFB3BA", "00FFD9B3", "00FFFFB3"]:
@@ -3365,12 +3370,10 @@ class PyADRecon:
                         enabled_cell = ws.cell(row=row_idx, column=headers["Enabled"])
                         if enabled_cell.value in [False, "FALSE"]:
                             is_disabled = True
-                            # Color Enabled cell red for disabled
-                            enabled_cell.fill = red_fill
-                        elif enabled_cell.value in [True, "TRUE"]:
-                            # Color Enabled cell green for enabled
-                            green_fill = PatternFill(start_color="B3FFB3", end_color="B3FFB3", fill_type="solid")
-                            enabled_cell.fill = green_fill
+                            # Color Enabled cell yellow for disabled computers (informational/warning)
+                            # Yellow indicates computer status without implying "bad" (red) or "good" (green)
+                            enabled_cell.fill = yellow_fill
+                        # Enabled computers remain uncolored (neutral state)
                     
                     # RED: Critical security issues
                     for col_name, (check_val, str_val) in red_columns.items():
@@ -3399,7 +3402,7 @@ class PyADRecon:
                         for col in range(1, ws.max_column + 1):
                             # Only gray cells that haven't been colored by security issues
                             cell = ws.cell(row=row_idx, column=col)
-                            # Skip the Enabled column itself (keep it red)
+                            # Skip the Enabled column itself (keep it yellow)
                             if col != headers.get("Enabled"):
                                 # Keep security highlighting visible
                                 if cell.fill.start_color.rgb not in ["00FFB3BA", "00FFD9B3", "00FFFFB3"]:
