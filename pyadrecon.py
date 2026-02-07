@@ -24,7 +24,6 @@ import logging
 import threading
 import subprocess
 import tempfile
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Third-party imports
 LDAP3_AVAILABLE = False
@@ -657,7 +656,6 @@ class ADReconConfig:
     use_ssl: bool = False
     port: int = 389
     page_size: int = 500
-    threads: int = 10
     dormant_days: int = 90
     password_age_days: int = 180
     output_dir: str = ""
@@ -4556,8 +4554,6 @@ Examples:
                        help='Output directory (default: PyADRecon-Report-<timestamp>)')
     parser.add_argument('--page-size', type=int, default=500,
                        help='LDAP page size (default: 500)')
-    parser.add_argument('--threads', type=int, default=10,
-                       help='Number of threads (default: 10)')
     parser.add_argument('--dormant-days', type=int, default=90,
                        help='Days for dormant account threshold (default: 90)')
     parser.add_argument('--password-age', type=int, default=180,
@@ -4633,7 +4629,6 @@ Examples:
         use_ssl=args.ssl,
         port=636 if args.ssl else args.port,
         page_size=args.page_size,
-        threads=args.threads,
         dormant_days=args.dormant_days,
         password_age_days=args.password_age,
         only_enabled=args.only_enabled,

@@ -67,7 +67,6 @@ options:
   -o, --output OUTPUT   Output directory (default: PyADRecon-Report-<timestamp>)
   --page-size PAGE_SIZE
                         LDAP page size (default: 500)
-  --threads THREADS     Number of threads (default: 10)
   --dormant-days DORMANT_DAYS
                         Days for dormant account threshold (default: 90)
   --password-age PASSWORD_AGE
