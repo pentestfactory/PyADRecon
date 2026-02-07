@@ -1725,7 +1725,7 @@ class PyADRecon:
                  'homeDirectory', 'profilePath', 'scriptPath', 'memberOf',
                  'primaryGroupID', 'objectSid', 'sIDHistory', 'servicePrincipalName',
                  'msDS-AllowedToDelegateTo', 'msDS-SupportedEncryptionTypes',
-                 'givenName', 'sn', 'middleName', 'c', 'info', 'logonWorkstation',
+                 'givenName', 'sn', 'middleName', 'c', 'info', 'userWorkstations',
                  'whenCreated', 'whenChanged', 'ntSecurityDescriptor']
             )
 
@@ -1850,7 +1850,7 @@ class PyADRecon:
                     "Delegation Type": delegation_type or "",
                     "Delegation Protocol": delegation_protocol or "",
                     "Delegation Services": delegation_services or "",
-                    "Logon Workstations": get_attr(entry, 'logonWorkstation', ''),
+                    "Logon Workstations": get_attr(entry, 'userWorkstations', ''),
                     "AdminCount": get_attr(entry, 'adminCount', ''),
                     "Primary GroupID": get_attr(entry, 'primaryGroupID', ''),
                     "SID": sid_to_string(get_attr(entry, 'objectSid')),
