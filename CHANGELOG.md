@@ -1,3 +1,10 @@
+## [0.5.4](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.3...v0.5.4) (2026-02-07)
+
+
+### Bug Fixes
+
+* properly parse 0 value for password policies ([739fdb7](https://github.com/l4rm4nd/PyADRecon/commit/739fdb704ead7983632639a874740cb7bd700a1b))
+
 ## [0.5.3](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.2...v0.5.3) (2026-02-06)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * add user and computer stats; also fix cannot-change-password and reversible-password-encryption ([4164512](https://github.com/l4rm4nd/PyADRecon/commit/416451289442c3e8782d15cd96e589fd6103dcc7))
-
-## [0.4.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.3.1...v0.4.0) (2026-02-06)
-
-
-### Features
-
-* support passing tgt for kerberos auth ([cf10787](https://github.com/l4rm4nd/PyADRecon/commit/cf10787e5c4b958c1656d6bb4f13ffacb3e1f4f4))
 
