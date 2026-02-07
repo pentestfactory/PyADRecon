@@ -1598,65 +1598,65 @@ class PyADRecon:
                 results.append({
                     "Policy": "Enforce password history (passwords)",
                     "Current Value": str(get_attr(entry, 'pwdHistoryLength', '')),
+                    "CIS Benchmark 2024-25": "24 or more",
                     "PCI DSS v4.0.1": "4",
-                    "PCI DSS Requirement": "Req. 8.3.7",
-                    "CIS Benchmark 2024-25": "24 or more"
+                    "PCI DSS Requirement": "Req. 8.3.7"
                 })
                 results.append({
                     "Policy": "Maximum password age (days)",
                     "Current Value": convert_interval_to_days(max_pwd_age),
+                    "CIS Benchmark 2024-25": "1 to 365",
                     "PCI DSS v4.0.1": "90",
-                    "PCI DSS Requirement": "Req. 8.3.9",
-                    "CIS Benchmark 2024-25": "1 to 365"
+                    "PCI DSS Requirement": "Req. 8.3.9"
                 })
                 results.append({
                     "Policy": "Minimum password age (days)",
                     "Current Value": convert_interval_to_days(min_pwd_age),
+                    "CIS Benchmark 2024-25": "1 or more",
                     "PCI DSS v4.0.1": "N/A",
-                    "PCI DSS Requirement": "-",
-                    "CIS Benchmark 2024-25": "1 or more"
+                    "PCI DSS Requirement": "-"
                 })
                 results.append({
                     "Policy": "Minimum password length (characters)",
                     "Current Value": str(get_attr(entry, 'minPwdLength', '')),
+                    "CIS Benchmark 2024-25": "14 or more",
                     "PCI DSS v4.0.1": "12",
-                    "PCI DSS Requirement": "Req. 8.3.6",
-                    "CIS Benchmark 2024-25": "14 or more"
+                    "PCI DSS Requirement": "Req. 8.3.6"
                 })
                 results.append({
                     "Policy": "Password must meet complexity requirements",
                     "Current Value": "TRUE" if (pwd_props & 1) else "FALSE",
+                    "CIS Benchmark 2024-25": "TRUE",
                     "PCI DSS v4.0.1": "TRUE",
-                    "PCI DSS Requirement": "Req. 8.3.6",
-                    "CIS Benchmark 2024-25": "TRUE"
+                    "PCI DSS Requirement": "Req. 8.3.6"
                 })
                 results.append({
                     "Policy": "Store password using reversible encryption for all users in the domain",
                     "Current Value": "TRUE" if (pwd_props & 16) else "FALSE",
+                    "CIS Benchmark 2024-25": "FALSE",
                     "PCI DSS v4.0.1": "N/A",
-                    "PCI DSS Requirement": "-",
-                    "CIS Benchmark 2024-25": "FALSE"
+                    "PCI DSS Requirement": "-"
                 })
                 results.append({
                     "Policy": "Account lockout duration (mins)",
                     "Current Value": convert_interval_to_minutes(lockout_duration),
+                    "CIS Benchmark 2024-25": "15 or more",
                     "PCI DSS v4.0.1": "0 (manual unlock) or 30",
-                    "PCI DSS Requirement": "Req. 8.3.4",
-                    "CIS Benchmark 2024-25": "15 or more"
+                    "PCI DSS Requirement": "Req. 8.3.4"
                 })
                 results.append({
                     "Policy": "Account lockout threshold (attempts)",
                     "Current Value": str(get_attr(entry, 'lockoutThreshold', '')),
+                    "CIS Benchmark 2024-25": "1 to 5",
                     "PCI DSS v4.0.1": "1 to 10",
-                    "PCI DSS Requirement": "Req. 8.3.4",
-                    "CIS Benchmark 2024-25": "1 to 5"
+                    "PCI DSS Requirement": "Req. 8.3.4"
                 })
                 results.append({
                     "Policy": "Reset account lockout counter after (mins)",
                     "Current Value": convert_interval_to_minutes(lockout_window),
+                    "CIS Benchmark 2024-25": "15 or more",
                     "PCI DSS v4.0.1": "N/A",
-                    "PCI DSS Requirement": "-",
-                    "CIS Benchmark 2024-25": "15 or more"
+                    "PCI DSS Requirement": "-"
                 })
 
         except Exception as e:
@@ -3243,6 +3243,283 @@ class PyADRecon:
 
         return csv_dir
 
+    def apply_security_formatting(self, wb):
+        """Apply conditional formatting to highlight security issues in Users and Computers sheets."""
+        from openpyxl.styles import PatternFill
+        
+        # Define color schemes for security issues
+        red_fill = PatternFill(start_color="FFB3BA", end_color="FFB3BA", fill_type="solid")  # Light red
+        orange_fill = PatternFill(start_color="FFD9B3", end_color="FFD9B3", fill_type="solid")  # Light orange
+        yellow_fill = PatternFill(start_color="FFFFB3", end_color="FFFFB3", fill_type="solid")  # Light yellow
+        
+        logger.info("    Applying security-based conditional formatting...")
+        
+        # Format Users sheet
+        if "Users" in wb.sheetnames:
+            ws = wb["Users"]
+            if ws.max_row > 1:  # Has data beyond header
+                # Find column indices for security-relevant fields
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                # Critical security issues (RED)
+                red_columns = {
+                    "Password Never Expires": (True, "TRUE"),
+                    "Reversible Password Encryption": (True, "TRUE"),
+                    "Does Not Require Pre Auth": (True, "TRUE"),
+                    "Password Not Required": (True, "TRUE"),
+                    "Kerberos DES Only": (True, "TRUE"),
+                    "AdminCount": (1, "1"),
+                }
+                
+                # Medium security issues (ORANGE)
+                orange_columns = {
+                    "Delegation Type": ("Unconstrained", "Unconstrained"),
+                    "Must Change Password at Logon": (True, "TRUE"),
+                    "Cannot Change Password": (True, "TRUE"),
+                    "Account Locked Out": (True, "TRUE"),
+                    "HasSPN": (True, "TRUE"),
+                }
+                
+                # Informational/warning (YELLOW)
+                yellow_columns = [
+                    "Never Logged in",
+                    f"Dormant (> {self.config.dormant_days} days)",
+                    f"Password Age (> {self.config.password_age_days} days)",
+                ]
+                
+                # Apply formatting to data rows (skip header)
+                for row_idx in range(2, ws.max_row + 1):
+                    # First, check Enabled status and color the Enabled cell itself
+                    is_disabled = False
+                    if "Enabled" in headers:
+                        enabled_cell = ws.cell(row=row_idx, column=headers["Enabled"])
+                        if enabled_cell.value in [False, "FALSE"]:
+                            is_disabled = True
+                            # Color Enabled cell red for disabled
+                            enabled_cell.fill = red_fill
+                        elif enabled_cell.value in [True, "TRUE"]:
+                            # Color Enabled cell green for enabled
+                            green_fill = PatternFill(start_color="B3FFB3", end_color="B3FFB3", fill_type="solid")
+                            enabled_cell.fill = green_fill
+                    
+                    # RED: Critical security issues
+                    for col_name, (check_val, str_val) in red_columns.items():
+                        if col_name in headers:
+                            cell = ws.cell(row=row_idx, column=headers[col_name])
+                            if cell.value in [check_val, str_val]:
+                                cell.fill = red_fill
+                    
+                    # ORANGE: Medium security issues
+                    for col_name, (check_val, str_val) in orange_columns.items():
+                        if col_name in headers:
+                            cell = ws.cell(row=row_idx, column=headers[col_name])
+                            if cell.value in [check_val, str_val]:
+                                cell.fill = orange_fill
+                    
+                    # YELLOW: Informational/warnings
+                    for col_name in yellow_columns:
+                        if col_name in headers:
+                            cell = ws.cell(row=row_idx, column=headers[col_name])
+                            if cell.value in [True, "TRUE"]:
+                                cell.fill = yellow_fill
+                    
+                    # Special: Gray out entire row for disabled users (after other formatting)
+                    if is_disabled:
+                        gray_fill = PatternFill(start_color="E0E0E0", end_color="E0E0E0", fill_type="solid")
+                        for col in range(1, ws.max_column + 1):
+                            # Only gray cells that haven't been colored by security issues
+                            cell = ws.cell(row=row_idx, column=col)
+                            # Skip the Enabled column itself (keep it red)
+                            if col != headers.get("Enabled"):
+                                # Keep security highlighting visible
+                                if cell.fill.start_color.rgb not in ["00FFB3BA", "00FFD9B3", "00FFFFB3"]:
+                                    cell.fill = gray_fill
+        
+        # Format Computers sheet
+        if "Computers" in wb.sheetnames:
+            ws = wb["Computers"]
+            if ws.max_row > 1:  # Has data beyond header
+                # Find column indices for security-relevant fields
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                # Critical security issues (RED)
+                red_columns = {
+                    "Delegation Type": ("Unconstrained", "Unconstrained"),
+                }
+                
+                # Medium security issues (ORANGE)
+                orange_columns = {
+                    f"Password Age (> {self.config.password_age_days} days)": (True, "TRUE"),
+                }
+                
+                # Informational/warning (YELLOW)
+                yellow_columns = [
+                    f"Dormant (> {self.config.dormant_days} days)",
+                ]
+                
+                # Apply formatting to data rows (skip header)
+                for row_idx in range(2, ws.max_row + 1):
+                    # First, check Enabled status and color the Enabled cell itself
+                    is_disabled = False
+                    if "Enabled" in headers:
+                        enabled_cell = ws.cell(row=row_idx, column=headers["Enabled"])
+                        if enabled_cell.value in [False, "FALSE"]:
+                            is_disabled = True
+                            # Color Enabled cell red for disabled
+                            enabled_cell.fill = red_fill
+                        elif enabled_cell.value in [True, "TRUE"]:
+                            # Color Enabled cell green for enabled
+                            green_fill = PatternFill(start_color="B3FFB3", end_color="B3FFB3", fill_type="solid")
+                            enabled_cell.fill = green_fill
+                    
+                    # RED: Critical security issues
+                    for col_name, (check_val, str_val) in red_columns.items():
+                        if col_name in headers:
+                            cell = ws.cell(row=row_idx, column=headers[col_name])
+                            if cell.value in [check_val, str_val]:
+                                cell.fill = red_fill
+                    
+                    # ORANGE: Medium security issues
+                    for col_name, (check_val, str_val) in orange_columns.items():
+                        if col_name in headers:
+                            cell = ws.cell(row=row_idx, column=headers[col_name])
+                            if cell.value in [check_val, str_val]:
+                                cell.fill = orange_fill
+                    
+                    # YELLOW: Informational/warnings
+                    for col_name in yellow_columns:
+                        if col_name in headers:
+                            cell = ws.cell(row=row_idx, column=headers[col_name])
+                            if cell.value in [True, "TRUE"]:
+                                cell.fill = yellow_fill
+                    
+                    # Special: Gray out entire row for disabled computers (after other formatting)
+                    if is_disabled:
+                        gray_fill = PatternFill(start_color="E0E0E0", end_color="E0E0E0", fill_type="solid")
+                        for col in range(1, ws.max_column + 1):
+                            # Only gray cells that haven't been colored by security issues
+                            cell = ws.cell(row=row_idx, column=col)
+                            # Skip the Enabled column itself (keep it red)
+                            if col != headers.get("Enabled"):
+                                # Keep security highlighting visible
+                                if cell.fill.start_color.rgb not in ["00FFB3BA", "00FFD9B3", "00FFFFB3"]:
+                                    cell.fill = gray_fill
+        
+        # Format PasswordPolicy sheet
+        if "PasswordPolicy" in wb.sheetnames:
+            ws = wb["PasswordPolicy"]
+            if ws.max_row > 1:  # Has data beyond header
+                # Find column indices
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                if "Current Value" in headers and "CIS Benchmark 2024-25" in headers:
+                    current_col = headers["Current Value"]
+                    cis_col = headers["CIS Benchmark 2024-25"]
+                    policy_col = headers["Policy"]
+                    
+                    # Apply formatting to data rows (skip header)
+                    for row_idx in range(2, ws.max_row + 1):
+                        policy = ws.cell(row=row_idx, column=policy_col).value
+                        current_val = ws.cell(row=row_idx, column=current_col).value
+                        cis_val = ws.cell(row=row_idx, column=cis_col).value
+                        
+                        # Convert to comparable types
+                        try:
+                            current_val_str = str(current_val).strip()
+                            cis_val_str = str(cis_val).strip()
+                            
+                            # Determine if current value meets CIS recommendation
+                            non_compliant = False
+                            
+                            if "Enforce password history" in str(policy):
+                                # CIS: 24 or more, check if current >= 24
+                                if current_val_str.isdigit() and int(current_val_str) < 24:
+                                    non_compliant = True
+                            
+                            elif "Maximum password age" in str(policy):
+                                # CIS: 1 to 365, check if in range
+                                if current_val_str.isdigit():
+                                    val = int(current_val_str)
+                                    if val < 1 or val > 365:
+                                        non_compliant = True
+                                elif current_val_str == "Not Set":
+                                    non_compliant = True
+                            
+                            elif "Minimum password age" in str(policy):
+                                # CIS: 1 or more
+                                if current_val_str.isdigit() and int(current_val_str) < 1:
+                                    non_compliant = True
+                                elif current_val_str == "Not Set":
+                                    non_compliant = True
+                            
+                            elif "Minimum password length" in str(policy):
+                                # CIS: 14 or more
+                                if current_val_str.isdigit() and int(current_val_str) < 14:
+                                    non_compliant = True
+                            
+                            elif "complexity requirements" in str(policy):
+                                # CIS: TRUE
+                                if current_val_str.upper() != "TRUE":
+                                    non_compliant = True
+                            
+                            elif "reversible encryption" in str(policy):
+                                # CIS: FALSE
+                                if current_val_str.upper() != "FALSE":
+                                    non_compliant = True
+                            
+                            elif "Account lockout duration" in str(policy):
+                                # CIS: 15 or more (0 is also acceptable for manual unlock)
+                                if current_val_str.isdigit():
+                                    val = int(current_val_str)
+                                    if val != 0 and val < 15:
+                                        non_compliant = True
+                                elif current_val_str == "Not Set":
+                                    non_compliant = True
+                            
+                            elif "Account lockout threshold" in str(policy):
+                                # CIS: 1 to 5
+                                if current_val_str.isdigit():
+                                    val = int(current_val_str)
+                                    if val < 1 or val > 5:
+                                        non_compliant = True
+                                elif current_val_str == "Not Set" or current_val_str == "0":
+                                    non_compliant = True
+                            
+                            elif "Reset account lockout counter" in str(policy):
+                                # CIS: 15 or more
+                                if current_val_str.isdigit() and int(current_val_str) < 15:
+                                    non_compliant = True
+                                elif current_val_str == "Not Set":
+                                    non_compliant = True
+                            
+                            # Highlight the Current Value cell - orange for non-compliant, green for compliant
+                            if non_compliant:
+                                ws.cell(row=row_idx, column=current_col).fill = orange_fill
+                            else:
+                                # Green for compliant
+                                green_fill = PatternFill(start_color="B3FFB3", end_color="B3FFB3", fill_type="solid")
+                                ws.cell(row=row_idx, column=current_col).fill = green_fill
+                        
+                        except Exception as e:
+                            logger.debug(f"Error comparing password policy values: {e}")
+        
+        # Format LAPS sheet
+        if "LAPS" in wb.sheetnames:
+            ws = wb["LAPS"]
+            if ws.max_row > 1:  # Has data beyond header
+                # Find column indices
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                if "Password" in headers:
+                    password_col = headers["Password"]
+                    
+                    # Apply formatting to data rows (skip header)
+                    for row_idx in range(2, ws.max_row + 1):
+                        password_cell = ws.cell(row=row_idx, column=password_col)
+                        # Highlight password field YELLOW if it contains a value
+                        if password_cell.value and str(password_cell.value).strip():
+                            password_cell.fill = yellow_fill
+
     def export_xlsx(self, output_dir: str, domain_name: str = ""):
         """Export results to Excel file (optimized for large datasets)."""
         if not OPENPYXL_AVAILABLE:
@@ -3652,6 +3929,9 @@ class PyADRecon:
                                 pass
                         adjusted_width = min(max_length + 2, 100)
                         ws.column_dimensions[column_letter].width = adjusted_width
+            
+            # Apply security-based conditional formatting
+            self.apply_security_formatting(wb)
             
             wb.save(filename)
             wb.close()
