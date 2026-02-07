@@ -150,3 +150,4 @@ Many thanks to the following folks:
 - [Sense-of-Security](https://github.com/sense-of-security) for the original ADRecon script in PowerShell
 - [cannatag](https://github.com/cannatag) for the awesome ldap3 Python client
 - [Forta](https://github.com/fortra) for the awesome impacket suite
+- [Anthropic](https://github.com/anthropics) for Claude LLMs
