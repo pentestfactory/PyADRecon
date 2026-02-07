@@ -1,3 +1,15 @@
+## [0.6.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.4...v0.6.0) (2026-02-07)
+
+
+### Features
+
+* auto-coloring of important things ([f7651cc](https://github.com/l4rm4nd/PyADRecon/commit/f7651cc38ab8e61a131c0eb6dd8c99756f1dd301))
+
+
+### Bug Fixes
+
+* updated pw policy recommendations ([c9346cb](https://github.com/l4rm4nd/PyADRecon/commit/c9346cb8bfd0c84cbf23b8163df07479af7e697d))
+
 ## [0.5.4](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.3...v0.5.4) (2026-02-07)
 
 
@@ -25,11 +37,4 @@
 ### Bug Fixes
 
 * toc sorting ([26e44d8](https://github.com/l4rm4nd/PyADRecon/commit/26e44d889713edccb7e95d9029624d29768e10f7))
-
-## [0.5.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.4.0...v0.5.0) (2026-02-06)
-
-
-### Features
-
-* add user and computer stats; also fix cannot-change-password and reversible-password-encryption ([4164512](https://github.com/l4rm4nd/PyADRecon/commit/416451289442c3e8782d15cd96e589fd6103dcc7))
 
