@@ -1536,8 +1536,8 @@ class PyADRecon:
                     try:
                         # ldap3 returns timedelta objects for these attributes
                         if isinstance(interval, timedelta):
-                            days = interval.days
-                            return days if days > 0 else "Not Set"
+                            days = abs(interval.days)
+                            return days
                         
                         # Fallback for raw integer values (100-nanosecond units)
                         if isinstance(interval, str):
@@ -1545,8 +1545,12 @@ class PyADRecon:
                         else:
                             interval_val = int(interval)
                         
-                        # Check for 0 or positive values that indicate "never expires"
-                        if interval_val == 0 or interval_val > 0:
+                        # Check for 0 - this means never expires or not set
+                        if interval_val == 0:
+                            return "Not Set"
+                        
+                        # Positive values don't make sense for AD time intervals
+                        if interval_val > 0:
                             return "Not Set"
                         
                         # AD stores as negative value in 100-nanosecond intervals
@@ -1563,8 +1567,8 @@ class PyADRecon:
                     try:
                         # ldap3 returns timedelta objects for these attributes
                         if isinstance(interval, timedelta):
-                            minutes = int(interval.total_seconds() / 60)
-                            return minutes if minutes > 0 else "Not Set"
+                            minutes = int(abs(interval.total_seconds()) / 60)
+                            return minutes
                         
                         # Fallback for raw integer values (100-nanosecond units)
                         if isinstance(interval, str):
@@ -1572,8 +1576,12 @@ class PyADRecon:
                         else:
                             interval_val = int(interval)
                         
-                        # Check for 0 or positive values
-                        if interval_val == 0 or interval_val > 0:
+                        # Check for 0 - this means administrator must manually unlock
+                        if interval_val == 0:
+                            return 0
+                        
+                        # Positive values don't make sense for AD time intervals
+                        if interval_val > 0:
                             return "Not Set"
                         
                         # AD stores as negative value in 100-nanosecond intervals
