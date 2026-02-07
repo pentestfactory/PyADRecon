@@ -1,3 +1,10 @@
+## [0.6.4](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.3...v0.6.4) (2026-02-07)
+
+
+### Bug Fixes
+
+* parsing logic for logon workstations column in users tab ([5a8b551](https://github.com/l4rm4nd/PyADRecon/commit/5a8b5515261e71baa9c395ee3d3640b66babe57c))
+
 ## [0.6.3](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.2...v0.6.3) (2026-02-07)
 
 
@@ -30,11 +37,4 @@
 ### Bug Fixes
 
 * updated pw policy recommendations ([c9346cb](https://github.com/l4rm4nd/PyADRecon/commit/c9346cb8bfd0c84cbf23b8163df07479af7e697d))
-
-## [0.5.4](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.3...v0.5.4) (2026-02-07)
-
-
-### Bug Fixes
-
-* properly parse 0 value for password policies ([739fdb7](https://github.com/l4rm4nd/PyADRecon/commit/739fdb704ead7983632639a874740cb7bd700a1b))
 
