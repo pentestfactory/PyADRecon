@@ -1598,92 +1598,65 @@ class PyADRecon:
                 results.append({
                     "Policy": "Enforce password history (passwords)",
                     "Current Value": str(get_attr(entry, 'pwdHistoryLength', '')),
-                    "PCI DSS v3.2.1": "4",
-                    "PCI DSS v4.0": "4",
-                    "PCI DSS Requirement": "Req. 8.2.5 / 8.3.7",
-                    "ACSC ISM": "N/A",
-                    "ISM Controls 16Jun2022": "-",
-                    "CIS Benchmark 2022": "24 or more"
+                    "PCI DSS v4.0.1": "4",
+                    "PCI DSS Requirement": "Req. 8.3.7",
+                    "CIS Benchmark 2024-25": "24 or more"
                 })
                 results.append({
                     "Policy": "Maximum password age (days)",
                     "Current Value": convert_interval_to_days(max_pwd_age),
-                    "PCI DSS v3.2.1": "90",
-                    "PCI DSS v4.0": "90",
-                    "PCI DSS Requirement": "Req. 8.2.4 / 8.3.9",
-                    "ACSC ISM": "365",
-                    "ISM Controls 16Jun2022": "ISM-1590 Rev:1 Mar22",
-                    "CIS Benchmark 2022": "1 to 365"
+                    "PCI DSS v4.0.1": "90",
+                    "PCI DSS Requirement": "Req. 8.3.9",
+                    "CIS Benchmark 2024-25": "1 to 365"
                 })
                 results.append({
                     "Policy": "Minimum password age (days)",
                     "Current Value": convert_interval_to_days(min_pwd_age),
-                    "PCI DSS v3.2.1": "N/A",
-                    "PCI DSS v4.0": "N/A",
+                    "PCI DSS v4.0.1": "N/A",
                     "PCI DSS Requirement": "-",
-                    "ACSC ISM": "N/A",
-                    "ISM Controls 16Jun2022": "-",
-                    "CIS Benchmark 2022": "1 or more"
+                    "CIS Benchmark 2024-25": "1 or more"
                 })
                 results.append({
                     "Policy": "Minimum password length (characters)",
                     "Current Value": str(get_attr(entry, 'minPwdLength', '')),
-                    "PCI DSS v3.2.1": "7",
-                    "PCI DSS v4.0": "12",
-                    "PCI DSS Requirement": "Req. 8.2.3 / 8.3.6",
-                    "ACSC ISM": "14",
-                    "ISM Controls 16Jun2022": "Control: ISM-0421 Rev:8 Dec21",
-                    "CIS Benchmark 2022": "14 or more"
+                    "PCI DSS v4.0.1": "12",
+                    "PCI DSS Requirement": "Req. 8.3.6",
+                    "CIS Benchmark 2024-25": "14 or more"
                 })
                 results.append({
                     "Policy": "Password must meet complexity requirements",
                     "Current Value": "TRUE" if (pwd_props & 1) else "FALSE",
-                    "PCI DSS v3.2.1": "TRUE",
-                    "PCI DSS v4.0": "TRUE",
-                    "PCI DSS Requirement": "Req. 8.2.3 / 8.3.6",
-                    "ACSC ISM": "N/A",
-                    "ISM Controls 16Jun2022": "-",
-                    "CIS Benchmark 2022": "TRUE"
+                    "PCI DSS v4.0.1": "TRUE",
+                    "PCI DSS Requirement": "Req. 8.3.6",
+                    "CIS Benchmark 2024-25": "TRUE"
                 })
                 results.append({
                     "Policy": "Store password using reversible encryption for all users in the domain",
                     "Current Value": "TRUE" if (pwd_props & 16) else "FALSE",
-                    "PCI DSS v3.2.1": "N/A",
-                    "PCI DSS v4.0": "N/A",
+                    "PCI DSS v4.0.1": "N/A",
                     "PCI DSS Requirement": "-",
-                    "ACSC ISM": "N/A",
-                    "ISM Controls 16Jun2022": "-",
-                    "CIS Benchmark 2022": "FALSE"
+                    "CIS Benchmark 2024-25": "FALSE"
                 })
                 results.append({
                     "Policy": "Account lockout duration (mins)",
                     "Current Value": convert_interval_to_minutes(lockout_duration),
-                    "PCI DSS v3.2.1": "0 (manual unlock) or 30",
-                    "PCI DSS v4.0": "0 (manual unlock) or 30",
-                    "PCI DSS Requirement": "Req. 8.1.7 / 8.3.4",
-                    "ACSC ISM": "N/A",
-                    "ISM Controls 16Jun2022": "-",
-                    "CIS Benchmark 2022": "15 or more"
+                    "PCI DSS v4.0.1": "0 (manual unlock) or 30",
+                    "PCI DSS Requirement": "Req. 8.3.4",
+                    "CIS Benchmark 2024-25": "15 or more"
                 })
                 results.append({
                     "Policy": "Account lockout threshold (attempts)",
                     "Current Value": str(get_attr(entry, 'lockoutThreshold', '')),
-                    "PCI DSS v3.2.1": "1 to 6",
-                    "PCI DSS v4.0": "1 to 10",
-                    "PCI DSS Requirement": "Req. 8.1.6 / 8.3.4",
-                    "ACSC ISM": "1 to 5",
-                    "ISM Controls 16Jun2022": "Control: ISM-1403 Rev:2 Oct19",
-                    "CIS Benchmark 2022": "1 to 5"
+                    "PCI DSS v4.0.1": "1 to 10",
+                    "PCI DSS Requirement": "Req. 8.3.4",
+                    "CIS Benchmark 2024-25": "1 to 5"
                 })
                 results.append({
                     "Policy": "Reset account lockout counter after (mins)",
                     "Current Value": convert_interval_to_minutes(lockout_window),
-                    "PCI DSS v3.2.1": "N/A",
-                    "PCI DSS v4.0": "N/A",
+                    "PCI DSS v4.0.1": "N/A",
                     "PCI DSS Requirement": "-",
-                    "ACSC ISM": "N/A",
-                    "ISM Controls 16Jun2022": "-",
-                    "CIS Benchmark 2022": "15 or more"
+                    "CIS Benchmark 2024-25": "15 or more"
                 })
 
         except Exception as e:
