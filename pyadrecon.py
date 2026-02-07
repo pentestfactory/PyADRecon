@@ -3247,17 +3247,25 @@ class PyADRecon:
         """Apply conditional formatting to highlight security issues in Users and Computers sheets.
         
         Color scheme:
-        - Red: Critical security issues (e.g., password never expires, unconstrained delegation)
+        - Red: Critical security issues (e.g., password never expires, unconstrained delegation, passwords in description/info)
         - Orange: Medium security issues (e.g., SPNs, password age)
         - Yellow: Informational/warnings (e.g., dormant accounts, never logged in, disabled status)
         - Gray: Disabled accounts (row background, unless overridden by security colors)
         """
         from openpyxl.styles import PatternFill
+        import re
         
         # Define color schemes for security issues
         red_fill = PatternFill(start_color="FFB3BA", end_color="FFB3BA", fill_type="solid")  # Light red
         orange_fill = PatternFill(start_color="FFD9B3", end_color="FFD9B3", fill_type="solid")  # Light orange
         yellow_fill = PatternFill(start_color="FFFFB3", end_color="FFFFB3", fill_type="solid")  # Light yellow
+        
+        # Regex pattern to detect passwords in description/info fields
+        # Matches common password-related keywords in multiple languages
+        password_pattern = re.compile(
+            r'\b(pw|password|passwort|kennwort|initial|pwd|pass|secret|cred|credential)\b',
+            re.IGNORECASE
+        )
         
         logger.info("    Applying security-based conditional formatting...")
         
@@ -3296,6 +3304,14 @@ class PyADRecon:
                 
                 # Apply formatting to data rows (skip header)
                 for row_idx in range(2, ws.max_row + 1):
+                    # Check Description and Info fields for password-related keywords (CRITICAL - RED)
+                    for field_name in ["Description", "Info"]:
+                        if field_name in headers:
+                            cell = ws.cell(row=row_idx, column=headers[field_name])
+                            if cell.value and isinstance(cell.value, str):
+                                if password_pattern.search(cell.value):
+                                    cell.fill = red_fill
+                    
                     # First, check Enabled status and color the Enabled cell itself
                     is_disabled = False
                     if "Enabled" in headers:
