@@ -6,6 +6,8 @@ Python3 implementation of [ADRecon](https://github.com/sense-of-security/ADRecon
 
 ## Installation
 
+Generic:
+
 ````bash
 # clone the repo
 git clone https://github.com/l4rm4nd/PyADRecon && cd PyADRecon
@@ -16,6 +18,12 @@ virtualenv venv && source venv/bin/activate
 # install dependencies
 pip install -r requirements.txt
 ````
+
+[BlackArch Linux](https://blackarch.org/):
+
+```bash
+pacman -Syu pyadrecon
+```
 
 ## Usage
 
