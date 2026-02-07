@@ -1,3 +1,10 @@
+## [0.6.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.1...v0.6.2) (2026-02-07)
+
+
+### Bug Fixes
+
+* detect passwords stored in desc and info + colorize ([3548770](https://github.com/l4rm4nd/PyADRecon/commit/35487705840dcb7eb2f00e50fea8c55451522fc6))
+
 ## [0.6.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.0...v0.6.1) (2026-02-07)
 
 
@@ -30,11 +37,4 @@
 ### Bug Fixes
 
 * add ipv6 and ipv4 addresses from dns records to computer tab ([153f07d](https://github.com/l4rm4nd/PyADRecon/commit/153f07d09018ea15c474b256ca46ffb5db25e11d))
-
-## [0.5.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.5.1...v0.5.2) (2026-02-06)
-
-
-### Bug Fixes
-
-* toc, about and printer tab ([f4d9ac5](https://github.com/l4rm4nd/PyADRecon/commit/f4d9ac5cabb92c986835c4d92fab405113d96c71))
 
