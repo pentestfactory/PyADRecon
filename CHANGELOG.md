@@ -1,3 +1,10 @@
+## [0.7.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.5...v0.7.0) (2026-02-08)
+
+
+### Features
+
+* add adcs and esc detection ([4d85e0c](https://github.com/l4rm4nd/PyADRecon/commit/4d85e0cd37b80129d86b5dc1115309ea575c26bb))
+
 ## [0.6.5](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.4...v0.6.5) (2026-02-07)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * detect passwords stored in desc and info + colorize ([3548770](https://github.com/l4rm4nd/PyADRecon/commit/35487705840dcb7eb2f00e50fea8c55451522fc6))
-
-## [0.6.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.0...v0.6.1) (2026-02-07)
-
-
-### Bug Fixes
-
-* adjust enabled coloring ([4ddba17](https://github.com/l4rm4nd/PyADRecon/commit/4ddba1726b455ff7a9c2680fc56637e1afacba84))
 
