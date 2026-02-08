@@ -1,3 +1,10 @@
+## [0.7.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.7.0...v0.7.1) (2026-02-08)
+
+
+### Bug Fixes
+
+* catch acl permission errors for adcs templates and adjust risk rating ([8f83753](https://github.com/l4rm4nd/PyADRecon/commit/8f837530644ecf2b66a1935825b725451e30414a))
+
 ## [0.7.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.5...v0.7.0) (2026-02-08)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * fixate py packages ([959b635](https://github.com/l4rm4nd/PyADRecon/commit/959b63547dca8bbc699c81d60de2ecc66d8f343f))
-
-## [0.6.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.1...v0.6.2) (2026-02-07)
-
-
-### Bug Fixes
-
-* detect passwords stored in desc and info + colorize ([3548770](https://github.com/l4rm4nd/PyADRecon/commit/35487705840dcb7eb2f00e50fea8c55451522fc6))
 
