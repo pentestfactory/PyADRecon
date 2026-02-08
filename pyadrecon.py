@@ -3278,6 +3278,7 @@ class PyADRecon:
         """Collect AD Certificate Services certificate templates."""
         logger.info("[-] Collecting ADCS Certificate Templates...")
         results = []
+        acl_read_warning_shown = False
 
         try:
             # Certificate templates are stored in CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration
@@ -3302,6 +3303,14 @@ class PyADRecon:
                 
                 # Parse write permissions for ESC4
                 write_principals = self._parse_write_permissions(entry)
+                
+                # Check if ACLs were successfully parsed (low-priv users may not have access)
+                acls_parsed = bool(enrollment_principals or write_principals)
+                if not acls_parsed and not acl_read_warning_shown:
+                    logger.warning("[!] Unable to read ACLs on certificate templates. This typically requires elevated privileges.")
+                    logger.warning("    ESC vulnerability detection and risk assessment will be limited.")
+                    logger.warning("    Consider running with a more privileged account for complete analysis.")
+                    acl_read_warning_shown = True
                 
                 # Parse flags
                 enrollment_flag = safe_int(get_attr(entry, 'msPKI-Enrollment-Flag', 0))
@@ -3475,11 +3484,19 @@ class PyADRecon:
                 
                 if low_priv_can_enroll and enrollment_principals and risk_level == 'Low':
                     risk_factors.append('Low-privileged users can enroll')
+                
+                # If ACLs couldn't be read, mark risk as Unknown (insufficient data)
+                if not acls_parsed and risk_level == 'Low':
+                    risk_level = 'Unknown'
+                    if not risk_factors:
+                        risk_factors = ['Insufficient privileges to read ACLs']
+                    else:
+                        risk_factors.append('Cannot verify enrollment rights (insufficient privileges)')
                     
                 # Format enrollment and write permissions
-                enroll_perms_str = '; '.join(enrollment_principals) if enrollment_principals else 'Unable to parse ACLs'
+                enroll_perms_str = '; '.join(enrollment_principals) if enrollment_principals else 'Insufficient privileges to read ACLs'
                 auto_enroll_perms_str = '; '.join(auto_enrollment_principals) if auto_enrollment_principals else 'None'
-                write_perms_str = '; '.join(write_principals) if write_principals else 'Only admins'
+                write_perms_str = '; '.join(write_principals) if write_principals else 'Insufficient privileges to read ACLs'
                 esc_list = ', '.join(esc_vulns) if esc_vulns else 'None'
                     
                 results.append({
