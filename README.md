@@ -17,7 +17,6 @@ Python3 implementation of [ADRecon](https://github.com/sense-of-security/ADRecon
   - [OUs & Group Policy](#ous--group-policy)
   - [Security](#security)
   - [DNS](#dns)
-  - [ADCS (Certificate Services)](#adcs-certificate-services)
 - [Acknowledgements](#acknowledgements)
 - [License](#license)
 
