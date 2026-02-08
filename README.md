@@ -10,13 +10,6 @@ Python3 implementation of [ADRecon](https://github.com/sense-of-security/ADRecon
 - [Usage](#usage)
 - [Docker](#docker)
 - [Collection Modules](#collection-modules)
-  - [Forest & Domain](#forest--domain)
-  - [Domain Controllers](#domain-controllers)
-  - [Users & Groups](#users--groups)
-  - [Computers & Printers](#computers--printers)
-  - [OUs & Group Policy](#ous--group-policy)
-  - [Security](#security)
-  - [DNS](#dns)
 - [Acknowledgements](#acknowledgements)
 - [License](#license)
 
