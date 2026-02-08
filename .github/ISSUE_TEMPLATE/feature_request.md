@@ -1,10 +1,8 @@
-<!-- .github/ISSUE_TEMPLATE/feature_request.md -->
-
 ---
-name: ✨ Feature Request
-about: Suggest an improvement, new detection, module, integration, or UX enhancement
-title: "[FEATURE] "
-labels: enhancement
+name: Feature request
+about: Suggest an idea for this project
+title: ''
+labels: ''
 assignees: ''
 
 ---

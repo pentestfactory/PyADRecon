@@ -1,10 +1,8 @@
-<!-- .github/ISSUE_TEMPLATE/bug_report.md -->
-
 ---
-name: 🐛 Bug Report
-about: Report parsing errors, incorrect outputs, crashes, or unexpected behavior
-title: "[BUG] "
-labels: bug
+name: Bug report
+about: Create a report to help us improve
+title: ''
+labels: ''
 assignees: ''
 
 ---
@@ -12,6 +10,7 @@ assignees: ''
 ## PyADRecon Bug Report
 
 Thank you for taking the time to report an issue!  
+
 To help diagnose quickly, please fill in the sections below with as much detail as you can.
 
 ---
@@ -66,10 +65,10 @@ For each field or section that is incorrect, please include:
 Example:
 
 ```
-Template: MS-User
-Attribute: Enrollment Rights
-Parsed: "Authenticated Users"
-Expected: "Domain Admins"
+Collection: Users
+Attribute: Enabled
+Parsed: "True"
+Expected: "False"
 ```
 
 Paste text or small snippets (not entire output unless necessary).
