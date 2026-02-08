@@ -63,10 +63,14 @@ try:
     from impacket.krb5.ccache import CCache
     from impacket.smbconnection import SMBConnection
     from impacket.nmb import NetBIOSError
+    from impacket.ldap import ldaptypes
     IMPACKET_AVAILABLE = True
 except ImportError:
     IMPACKET_AVAILABLE = False
     print("[*] impacket not available - SMB features disabled")
+    # Fallback class if impacket not available
+    class ldaptypes:
+        pass
 
 try:
     import openpyxl
@@ -687,6 +691,7 @@ class ADReconConfig:
     collect_computer_spns: bool = True
     collect_laps: bool = True
     collect_bitlocker: bool = True
+    collect_adcs: bool = True
 
 
 class PyADRecon:
@@ -701,6 +706,7 @@ class PyADRecon:
         self.domain_sid: str = ""
         self.results: Dict[str, List] = {}
         self.start_time: datetime = datetime.now()
+        self._sid_cache: Dict[str, str] = {}  # Cache for SID-to-name resolution
 
     def connect(self) -> bool:
         """Establish LDAP connection. Try LDAPS first, fall back to LDAP if it fails."""
@@ -3051,6 +3057,509 @@ class PyADRecon:
         logger.info(f"    Found {len(results)} schema objects")
         return results
 
+    def _parse_enrollment_rights(self, entry) -> tuple:
+        """Parse nTSecurityDescriptor to get principals with enrollment rights.
+        Returns: (enrollment_principals list, auto_enrollment_principals list)
+        """
+        enrollment_principals = []
+        auto_enrollment_principals = []
+        
+        if not IMPACKET_AVAILABLE:
+            logger.debug("Impacket not available for ACL parsing")
+            return (enrollment_principals, auto_enrollment_principals)
+        
+        try:
+            # Certificate-Enrollment extended right GUID
+            CERT_ENROLLMENT_GUID = "0e10c968-78fb-11d2-90d4-00c04f79dc55"
+            # Certificate-AutoEnrollment extended right GUID  
+            CERT_AUTO_ENROLLMENT_GUID = "a05b8cc2-17bc-4802-a710-e7c15ab866a2"
+            
+            # Get raw security descriptor bytes
+            sd_data = get_attr(entry, 'nTSecurityDescriptor')
+            if not sd_data or not isinstance(sd_data, bytes):
+                logger.debug("No security descriptor data found or wrong type")
+                return (enrollment_principals, auto_enrollment_principals)
+            
+            # Parse the security descriptor using impacket
+            sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=sd_data)
+            
+            # Check if DACL exists
+            if not sd['Dacl']:
+                logger.debug("No DACL in security descriptor")
+                return (enrollment_principals, auto_enrollment_principals)
+            
+            # Parse each ACE in the DACL
+            for ace in sd['Dacl'].aces:
+                try:
+                    # Get SID from ACE
+                    sid = ace['Ace']['Sid'].formatCanonical()
+                    
+                    # Resolve SID to name
+                    principal_name = self._resolve_sid_to_name(sid)
+                    
+                    # Check if this is an ACCESS_ALLOWED_OBJECT_ACE
+                    ace_type = ace['AceType']
+                    
+                    # ACCESS_ALLOWED_OBJECT_ACE_TYPE = 5
+                    # ACCESS_ALLOWED_ACE_TYPE = 0
+                    if ace_type in [0, 5]:  # Standard or Object ACE
+                        mask = ace['Ace']['Mask']['Mask']
+                        
+                        # Check for extended right (0x100 = ADS_RIGHT_DS_CONTROL_ACCESS)
+                        if mask & 0x100:
+                            # For object ACEs, check the ObjectType GUID
+                            if ace_type == 5:
+                                # Get ObjectType GUID if present
+                                ace_data = ace['Ace']
+                                
+                                # Check if Flags field exists and has ACE_OBJECT_TYPE_PRESENT
+                                try:
+                                    flags = ace_data['Flags']
+                                except (KeyError, TypeError):
+                                    flags = 0
+                                
+                                # ACE_OBJECT_TYPE_PRESENT = 0x1
+                                if flags & 0x1:
+                                    try:
+                                        obj_type = ace_data['ObjectType']
+                                        # Convert bytes to GUID string
+                                        if isinstance(obj_type, bytes) and len(obj_type) == 16:
+                                            import uuid
+                                            # Parse as little-endian GUID
+                                            obj_type_str = str(uuid.UUID(bytes_le=obj_type)).lower()
+                                        else:
+                                            obj_type_str = str(obj_type).lower()
+                                        
+                                        # Check if it's the enrollment GUID
+                                        if obj_type_str == CERT_ENROLLMENT_GUID.lower():
+                                            if principal_name not in enrollment_principals:
+                                                enrollment_principals.append(principal_name)
+                                        
+                                        # Check if it's the auto-enrollment GUID
+                                        if obj_type_str == CERT_AUTO_ENROLLMENT_GUID.lower():
+                                            if principal_name not in auto_enrollment_principals:
+                                                auto_enrollment_principals.append(principal_name)
+                                    except (KeyError, TypeError, ValueError) as e:
+                                        logger.debug(f"Could not get ObjectType: {e}")
+                                else:
+                                    # No ObjectType means applies to all extended rights
+                                    if principal_name not in enrollment_principals:
+                                        enrollment_principals.append(principal_name)
+                            else:
+                                # Standard ACE with extended right - applies to all
+                                if principal_name not in enrollment_principals:
+                                    enrollment_principals.append(principal_name)
+                                    
+                except Exception as e:
+                    logger.debug(f"Error parsing ACE: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.debug(f"Error parsing security descriptor: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            
+        return (enrollment_principals, auto_enrollment_principals)
+    
+    def _parse_write_permissions(self, entry) -> list:
+        """Parse nTSecurityDescriptor to get principals with write permissions (for ESC4).
+        Returns: list of principals with WriteDacl, WriteOwner, or WriteProperty rights
+        """
+        write_principals = []
+        
+        if not IMPACKET_AVAILABLE:
+            return write_principals
+        
+        try:
+            # Get raw security descriptor bytes
+            sd_data = get_attr(entry, 'nTSecurityDescriptor')
+            if not sd_data or not isinstance(sd_data, bytes):
+                return write_principals
+            
+            # Parse the security descriptor
+            sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=sd_data)
+            
+            if not sd['Dacl']:
+                return write_principals
+            
+            # Access rights for ESC4
+            # WRITE_DACL = 0x00040000
+            # WRITE_OWNER = 0x00080000  
+            # WRITE_PROPERTY / ADS_RIGHT_DS_WRITE_PROP = 0x00000020
+            # GENERIC_WRITE = 0x40000000
+            # GENERIC_ALL = 0x10000000
+            
+            for ace in sd['Dacl'].aces:
+                try:
+                    sid = ace['Ace']['Sid'].formatCanonical()
+                    ace_type = ace['AceType']
+                    
+                    # Only check ALLOW ACEs
+                    if ace_type in [0, 5]:  # ACCESS_ALLOWED
+                        mask = ace['Ace']['Mask']['Mask']
+                        
+                        # Check for dangerous write permissions
+                        if mask & (0x00040000 | 0x00080000 | 0x00000020 | 0x40000000 | 0x10000000):
+                            principal_name = self._resolve_sid_to_name(sid)
+                            if principal_name not in write_principals:
+                                write_principals.append(principal_name)
+                                
+                except Exception as e:
+                    logger.debug(f"Error parsing ACE for write perms: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.debug(f"Error parsing write permissions: {e}")
+            
+        return write_principals
+    
+    def _resolve_sid_to_name(self, sid: str) -> str:
+        """Resolve a SID to a readable name (user/group) with caching."""
+        # Check cache first
+        if sid in self._sid_cache:
+            return self._sid_cache[sid]
+        
+        # Well-known SIDs
+        well_known_sids = {
+            'S-1-5-11': 'Authenticated Users',
+            'S-1-5-32-544': 'BUILTIN\\Administrators',
+            'S-1-5-32-545': 'BUILTIN\\Users',
+            'S-1-5-32-546': 'BUILTIN\\Guests',
+            'S-1-1-0': 'Everyone',
+            'S-1-5-18': 'NT AUTHORITY\\SYSTEM',
+            'S-1-5-7': 'ANONYMOUS LOGON',
+            'S-1-5-9': 'Enterprise Domain Controllers',
+            'S-1-5-32-548': 'Account Operators',
+            'S-1-5-32-549': 'Server Operators',
+            'S-1-5-32-550': 'Print Operators',
+            'S-1-5-32-551': 'Backup Operators',
+        }
+        
+        if sid in well_known_sids:
+            result = well_known_sids[sid]
+            self._sid_cache[sid] = result
+            return result
+        
+        # Try to resolve from domain
+        try:
+            # Search for the object by objectSid
+            entries = self.search(
+                self.base_dn,
+                f"(objectSid={sid})",
+                ['sAMAccountName', 'cn', 'distinguishedName', 'objectClass'],
+                search_scope=SUBTREE
+            )
+            
+            if entries:
+                entry = entries[0]
+                sam_name = get_attr(entry, 'sAMAccountName', '')
+                cn_name = get_attr(entry, 'cn', '')
+                obj_classes = get_attr(entry, 'objectClass', [])
+                
+                # Determine if it's a group or user
+                if 'group' in obj_classes:
+                    result = f"[Group] {sam_name or cn_name}"
+                elif 'user' in obj_classes:
+                    result = f"[User] {sam_name or cn_name}"
+                else:
+                    result = sam_name or cn_name
+                
+                self._sid_cache[sid] = result
+                return result
+        except Exception as e:
+            logger.debug(f"Could not resolve SID {sid}: {e}")
+        
+        # Return SID if resolution failed
+        result = f"[SID] {sid}"
+        self._sid_cache[sid] = result
+        return result
+
+    def collect_certificate_templates(self) -> List[Dict]:
+        """Collect AD Certificate Services certificate templates."""
+        logger.info("[-] Collecting ADCS Certificate Templates...")
+        results = []
+
+        try:
+            # Certificate templates are stored in CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration
+            pki_dn = f"CN=Certificate Templates,CN=Public Key Services,CN=Services,{self.config_dn}"
+            
+            entries = self.search(
+                pki_dn,
+                "(objectClass=pKICertificateTemplate)",
+                ['cn', 'displayName', 'distinguishedName', 'whenCreated', 'whenChanged',
+                 'pKIDefaultKeySpec', 'pKIMaxIssuingDepth', 'pKIExpirationPeriod',
+                 'pKIOverlapPeriod', 'pKICriticalExtensions', 'pKIExtendedKeyUsage',
+                 'msPKI-Certificate-Name-Flag', 'msPKI-Enrollment-Flag',
+                 'msPKI-Private-Key-Flag', 'msPKI-Certificate-Application-Policy',
+                 'msPKI-RA-Signature', 'pKIDefaultCSPs', 'flags',
+                 'nTSecurityDescriptor', 'msPKI-Template-Schema-Version',
+                 'msPKI-Template-Minor-Revision', 'msPKI-Cert-Template-OID']
+            )
+
+            for entry in entries:
+                # Parse enrollment permissions from security descriptor
+                enrollment_principals, auto_enrollment_principals = self._parse_enrollment_rights(entry)
+                
+                # Parse write permissions for ESC4
+                write_principals = self._parse_write_permissions(entry)
+                
+                # Parse flags
+                enrollment_flag = safe_int(get_attr(entry, 'msPKI-Enrollment-Flag', 0))
+                cert_name_flag = safe_int(get_attr(entry, 'msPKI-Certificate-Name-Flag', 0))
+                private_key_flag = safe_int(get_attr(entry, 'msPKI-Private-Key-Flag', 0))
+                
+                # Check for vulnerable configurations
+                enrollee_supplies_subject = bool(cert_name_flag & 0x00000001)  # CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT
+                allows_san = bool(cert_name_flag & 0x00010000)  # CT_FLAG_SUBJECT_ALT_REQUIRE_UPN/DNS/EMAIL
+                
+                # Check authorization flags
+                no_security_extension = bool(enrollment_flag & 0x80000000)  # ESC9
+                auto_enroll = bool(enrollment_flag & 0x00000020)
+                
+                # Check if exportable
+                exportable_key = bool(private_key_flag & 0x00000010)  # CT_FLAG_EXPORTABLE_KEY
+                
+                # Get extended key usage
+                eku = get_attr(entry, 'pKIExtendedKeyUsage', [])
+                if isinstance(eku, str):
+                    eku = [eku]
+                eku_str = ', '.join(eku) if eku else ''
+                
+                # ESC vulnerability checks
+                # ESC1: Enrollee supplies subject + Client Authentication
+                has_client_auth = '1.3.6.1.5.5.7.3.2' in eku_str or not eku_str
+                
+                # ESC2: Any Purpose EKU (allows any usage including client auth)
+                has_any_purpose_eku = '2.5.29.37.0' in eku_str
+                
+                # ESC3: Certificate Request Agent / Enrollment Agent
+                has_enrollment_agent = '1.3.6.1.4.1.311.20.2.1' in eku_str
+                
+                # ESC9: No security extension (StrongCertificateBindingEnforcement not set)
+                vulnerable_to_esc9 = no_security_extension
+                
+                # Determine risk level
+                risk_level = 'Low'
+                risk_factors = []
+                
+                # Check if low-privileged users can enroll  
+                low_priv_can_enroll = False
+                only_admins_can_enroll = False
+                
+                if enrollment_principals:
+                    for principal in enrollment_principals:
+                        principal_lower = principal.lower()
+                        # Check for low-privileged groups
+                        if any(x in principal_lower for x in ['authenticated users', 'domain users', 'domain computers', 'users', 'everyone']):
+                            low_priv_can_enroll = True
+                            break
+                    
+                    # Check if only administrative principals have enrollment rights
+                    if not low_priv_can_enroll:
+                        admin_keywords = [
+                            # Domain-level admin groups
+                            'domain admins', 'enterprise admins', 'schema admins', 'administrator',
+                            # Built-in privileged groups
+                            'builtin\\administrators', 'account operators', 'server operators', 
+                            'backup operators', 'print operators', 'group policy creator owners',
+                            # Service and infrastructure groups
+                            'ras and ias servers', 'cert publishers', 'cryptographic operators',
+                            'network configuration operators', 'dnsadmins', 'dns admins',
+                            'domain controllers', 'enterprise read-only domain controllers',
+                            'key admins', 'enterprise key admins', 'protected users',
+                            # Well-known privileged SIDs
+                            's-1-5-9',      # Enterprise Domain Controllers
+                            's-1-5-18',     # Local System
+                            's-1-5-19',     # Local Service
+                            's-1-5-20',     # Network Service
+                            's-1-5-32-544', # Administrators
+                            's-1-5-32-548', # Account Operators
+                            's-1-5-32-549', # Server Operators
+                            's-1-5-32-550', # Print Operators
+                            's-1-5-32-551'  # Backup Operators
+                        ]
+                        only_admins_can_enroll = all(
+                            any(admin_keyword in principal.lower() for admin_keyword in admin_keywords)
+                            for principal in enrollment_principals
+                        )
+                
+                # Check for non-admin write permissions (ESC4)
+                low_priv_can_write = False
+                for principal in write_principals:
+                    principal_lower = principal.lower()
+                    # Exclude admin groups/users from ESC4 check (check for various admin indicators)
+                    is_admin = any(x in principal_lower for x in [
+                        # Domain-level admin groups
+                        'domain admins', 'enterprise admins', 'schema admins', 'administrator',
+                        # Built-in privileged groups
+                        'builtin\\administrators', 'account operators', 'server operators', 
+                        'backup operators', 'print operators', 'group policy creator owners',
+                        # Service and infrastructure groups
+                        'ras and ias servers', 'cert publishers', 'cryptographic operators',
+                        'network configuration operators', 'dnsadmins', 'dns admins',
+                        'domain controllers', 'enterprise read-only domain controllers',
+                        'key admins', 'enterprise key admins', 'protected users', 'system',
+                        # Well-known privileged SIDs
+                        's-1-5-9',      # Enterprise Domain Controllers
+                        's-1-5-18',     # Local System
+                        's-1-5-19',     # Local Service
+                        's-1-5-20',     # Network Service
+                        's-1-5-32-544', # Administrators
+                        's-1-5-32-548', # Account Operators
+                        's-1-5-32-549', # Server Operators
+                        's-1-5-32-550', # Print Operators
+                        's-1-5-32-551'  # Backup Operators
+                    ])
+                    if not is_admin:
+                        low_priv_can_write = True
+                        break
+                
+                # Risk assessment with ESC1-4 and ESC9
+                esc_vulns = []
+                
+                # ESC1: Domain escalation via Subject Alternative Name
+                if enrollee_supplies_subject and has_client_auth and enrollment_principals and not only_admins_can_enroll:
+                    if low_priv_can_enroll:
+                        risk_level = 'CRITICAL'
+                        esc_vulns.append('ESC1')
+                        risk_factors.append('ESC1: Enrollee supplies subject + Client Auth + Low-priv enrollment')
+                    else:
+                        risk_level = 'HIGH'
+                        esc_vulns.append('ESC1')
+                        risk_factors.append('ESC1: Enrollee supplies subject + Client Auth')
+                
+                # ESC2: Any Purpose EKU
+                if has_any_purpose_eku and enrollment_principals and not only_admins_can_enroll:
+                    if low_priv_can_enroll:
+                        if risk_level != 'CRITICAL':
+                            risk_level = 'HIGH'
+                        esc_vulns.append('ESC2')
+                        risk_factors.append('ESC2: Any Purpose EKU allows arbitrary certificate usage')
+                
+                # ESC3: Enrollment Agent template
+                if has_enrollment_agent and enrollment_principals and not only_admins_can_enroll:
+                    if low_priv_can_enroll:
+                        if risk_level not in ['CRITICAL', 'HIGH']:
+                            risk_level = 'HIGH'
+                        esc_vulns.append('ESC3')
+                        risk_factors.append('ESC3: Certificate Request Agent EKU (enrollment agent)')
+                
+                # ESC4: Vulnerable template ACLs
+                if low_priv_can_write:
+                    if risk_level not in ['CRITICAL', 'HIGH']:
+                        risk_level = 'HIGH'
+                    esc_vulns.append('ESC4')
+                    risk_factors.append('ESC4: Non-admin principals have write access to template')
+                
+                # ESC9: No security extension
+                if vulnerable_to_esc9 and enrollment_principals and not only_admins_can_enroll:
+                    if risk_level == 'Low':
+                        risk_level = 'Medium'
+                    esc_vulns.append('ESC9')
+                    risk_factors.append('ESC9: No security extension (vulnerable to certificate theft)')
+                
+                # Additional risk factors
+                if only_admins_can_enroll and (enrollee_supplies_subject and has_client_auth):
+                    risk_factors.append('ESC1 config present but only admins can enroll')
+                
+                # Only flag as Medium if non-admins can actually enroll
+                if enrollee_supplies_subject and not has_client_auth and risk_level == 'Low' and not only_admins_can_enroll:
+                    risk_level = 'Medium'
+                    risk_factors.append('Enrollee can supply subject name')
+                elif allows_san and risk_level == 'Low' and not only_admins_can_enroll:
+                    risk_level = 'Medium'
+                    risk_factors.append('Allows Subject Alternative Name')
+                    
+                if exportable_key and risk_level != 'Low':
+                    risk_factors.append('Private key exportable')
+                
+                if low_priv_can_enroll and enrollment_principals and risk_level == 'Low':
+                    risk_factors.append('Low-privileged users can enroll')
+                    
+                # Format enrollment and write permissions
+                enroll_perms_str = '; '.join(enrollment_principals) if enrollment_principals else 'Unable to parse ACLs'
+                auto_enroll_perms_str = '; '.join(auto_enrollment_principals) if auto_enrollment_principals else 'None'
+                write_perms_str = '; '.join(write_principals) if write_principals else 'Only admins'
+                esc_list = ', '.join(esc_vulns) if esc_vulns else 'None'
+                    
+                results.append({
+                    "Template Name": get_attr(entry, 'cn', ''),
+                    "Display Name": get_attr(entry, 'displayName', ''),
+                    "Distinguished Name": get_attr(entry, 'distinguishedName', ''),
+                    "Schema Version": safe_int(get_attr(entry, 'msPKI-Template-Schema-Version', 0)),
+                    "Created": format_datetime(get_attr(entry, 'whenCreated')),
+                    "Modified": format_datetime(get_attr(entry, 'whenChanged')),
+                    "Extended Key Usage": eku_str,
+                    "Enrollee Supplies Subject": enrollee_supplies_subject,
+                    "Allows SAN": allows_san,
+                    "Client Authentication": has_client_auth,
+                    "Any Purpose EKU": has_any_purpose_eku,
+                    "Enrollment Agent": has_enrollment_agent,
+                    "Exportable Key": exportable_key,
+                    "Auto-Enrollment": auto_enroll,
+                    "Requires Manager Approval": bool(enrollment_flag & 0x00000002),
+                    "Enrollment Flag": hex(enrollment_flag),
+                    "Certificate Name Flag": hex(cert_name_flag),
+                    "Private Key Flag": hex(private_key_flag),
+                    "Enrollment Rights": enroll_perms_str,
+                    "Auto-Enrollment Rights": auto_enroll_perms_str,
+                    "Write Permissions": write_perms_str,
+                    "ESC Vulnerabilities": esc_list,
+                    "Risk Level": risk_level,
+                    "Risk Factors": '; '.join(risk_factors) if risk_factors else 'None',
+                })
+
+        except Exception as e:
+            logger.warning(f"Error collecting certificate templates: {e}")
+            logger.debug(f"Exception details: ", exc_info=True)
+
+        self.results['CertificateTemplates'] = results
+        logger.info(f"    Found {len(results)} certificate templates")
+        return results
+
+    def collect_certificate_authorities(self) -> List[Dict]:
+        """Collect AD Certificate Services certificate authorities."""
+        logger.info("[-] Collecting ADCS Certificate Authorities...")
+        results = []
+
+        try:
+            # CAs are stored in CN=Enrollment Services,CN=Public Key Services,CN=Services,CN=Configuration
+            pki_dn = f"CN=Enrollment Services,CN=Public Key Services,CN=Services,{self.config_dn}"
+            
+            entries = self.search(
+                pki_dn,
+                "(objectClass=pKIEnrollmentService)",
+                ['cn', 'displayName', 'distinguishedName', 'dNSHostName',
+                 'whenCreated', 'whenChanged', 'cACertificate', 'certificateTemplates',
+                 'msPKI-Enrollment-Servers', 'flags']
+            )
+
+            for entry in entries:
+                # Get certificate templates this CA issues
+                templates = get_attr(entry, 'certificateTemplates', [])
+                if isinstance(templates, str):
+                    templates = [templates]
+                templates_str = ', '.join(templates) if templates else 'None'
+                
+                results.append({
+                    "CA Name": get_attr(entry, 'cn', ''),
+                    "Display Name": get_attr(entry, 'displayName', ''),
+                    "DNS Hostname": get_attr(entry, 'dNSHostName', ''),
+                    "Distinguished Name": get_attr(entry, 'distinguishedName', ''),
+                    "Created": format_datetime(get_attr(entry, 'whenCreated')),
+                    "Modified": format_datetime(get_attr(entry, 'whenChanged')),
+                    "Certificate Templates": templates_str,
+                    "Template Count": len(templates),
+                })
+
+        except Exception as e:
+            logger.warning(f"Error collecting certificate authorities: {e}")
+            logger.debug(f"Exception details: ", exc_info=True)
+
+        self.results['CertificateAuthorities'] = results
+        logger.info(f"    Found {len(results)} certificate authorities")
+        return results
+
     def collect_about(self) -> List[Dict]:
         """Collect metadata about the PyADRecon run."""
         logger.info("[-] Collecting About PyADRecon...")
@@ -3180,6 +3689,10 @@ class PyADRecon:
 
         if self.config.collect_bitlocker:
             self.collect_bitlocker()
+
+        if self.config.collect_adcs:
+            self.collect_certificate_templates()
+            self.collect_certificate_authorities()
 
         # Collect metadata about this run (always collect)
         self.collect_about()
@@ -3565,7 +4078,8 @@ class PyADRecon:
             SHEET_ORDER = [
                 'AboutPyADRecon', 'Users', 'UserSPNs', 'GroupMembers', 'Groups', 'OUs', 'Computers',
                 'ComputerSPNs', 'LAPS', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
-                'DomainControllers', 'PasswordPolicy', 'FineGrainedPasswordPolicy',
+                'DomainControllers', 'CertificateTemplates', 'CertificateAuthorities',
+                'PasswordPolicy', 'FineGrainedPasswordPolicy',
                 'SchemaHistory', 'Sites', 'Domain', 'Forest'
             ]
             
@@ -3608,6 +4122,9 @@ class PyADRecon:
                 stats_sheets.append(['Computer Stats', 'Statistics'])
             
             for name in SHEET_ORDER:
+                # Skip AboutPyADRecon as it appears before TOC
+                if name == 'AboutPyADRecon':
+                    continue
                 if name in self.results and self.results[name]:
                     friendly_name = SHEET_NAME_MAPPING.get(name, name)
                     toc_data.append([friendly_name, len(self.results[name])])
@@ -3997,7 +4514,8 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
         SHEET_ORDER = [
             'AboutPyADRecon', 'Users', 'UserSPNs', 'GroupMembers', 'Groups', 'OUs', 'Computers',
             'ComputerSPNs', 'LAPS', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
-            'DomainControllers', 'PasswordPolicy', 'FineGrainedPasswordPolicy',
+            'DomainControllers', 'CertificateTemplates', 'CertificateAuthorities',
+            'PasswordPolicy', 'FineGrainedPasswordPolicy',
             'SchemaHistory', 'Sites', 'Domain', 'Forest'
         ]
         
@@ -4664,6 +5182,7 @@ Examples:
         config.collect_computer_spns = 'computerspns' in collect_modules
         config.collect_laps = 'laps' in collect_modules
         config.collect_bitlocker = 'bitlocker' in collect_modules
+        config.collect_adcs = 'adcs' in collect_modules or 'certificates' in collect_modules
 
     # Create output directory
     if args.output:
