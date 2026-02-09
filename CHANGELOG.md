@@ -1,3 +1,10 @@
+## [0.9.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.9.0...v0.9.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* improve laps parsing and display who can read Mcs-AdmPwd ([1cba961](https://github.com/l4rm4nd/PyADRecon/commit/1cba961d399bcb14a377166496d425d297b03c83))
+
 ## [0.9.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.8.0...v0.9.0) (2026-02-09)
 
 
@@ -30,11 +37,4 @@
 ### Bug Fixes
 
 * catch acl permission errors for adcs templates and adjust risk rating ([8f83753](https://github.com/l4rm4nd/PyADRecon/commit/8f837530644ecf2b66a1935825b725451e30414a))
-
-## [0.7.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.5...v0.7.0) (2026-02-08)
-
-
-### Features
-
-* add adcs and esc detection ([4d85e0c](https://github.com/l4rm4nd/PyADRecon/commit/4d85e0cd37b80129d86b5dc1115309ea575c26bb))
 
