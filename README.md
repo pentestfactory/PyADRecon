@@ -36,21 +36,6 @@ pacman -Syu pyadrecon
 
 ## Usage
 
->[!TIP]
->PyADRecon always tries LDAPS on TCP/636 first.
->
->If flag `--ssl` is not used, LDAP on TCP/389 may be tried as fallback.
-
->[!WARNING]
->If LDAP channel binding is enabled, this script will fail with `automatic bind not successful - strongerAuthRequired`, as ldap3 does not support it (see [here](https://github.com/cannatag/ldap3/issues/1049#issuecomment-1222826803)). You must use Kerberos authentication instead.
->
->If you use Kerberos auth, please create a valid `/etc/krb5.conf` and DC hostname entry in `/etc/hosts`. May read [this](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=32628#KerberosClientConfiguration-*NIX/etc/krb5.confConfiguration).
->
->Note that you can provide an already existing TGT ticket to the script via `--tgt-file` or `--tgt-base64`. For example, obtained by Netexec via `netexec smb <TARGET> <ARGS> --generate-tgt <FILEMAME>`.
-
->[!TIP]
->If a user account has `userWorkstations` attribute restrictions (allowed to log in only from specific computers), you can bypass this using the `--workstation` flag. This spoofs the workstation name during NTLM authentication, making the DC believe you're connecting from an allowed machine. Useful for pentesting with low-privilege accounts that have workstation restrictions.
-
 ````py
 usage: pyadrecon.py [-h] [--generate-excel-from CSV_DIR] [-dc DOMAIN_CONTROLLER] [-u USERNAME] [-p [PASSWORD]] [-d DOMAIN] [--auth {ntlm,kerberos}] [--tgt-file TGT_FILE] [--tgt-base64 TGT_BASE64]
                     [--ssl] [--port PORT] [-o OUTPUT] [--page-size PAGE_SIZE] [--threads THREADS] [--dormant-days DORMANT_DAYS] [--password-age PASSWORD_AGE] [--only-enabled] [--collect COLLECT]
@@ -86,7 +71,7 @@ options:
   --only-enabled        Only collect enabled objects
   --collect COLLECT     Comma-separated modules to collect (default: all)
   --workstation WORKSTATION
-                        Spoof workstation name for NTLM authentication (bypasses userWorkstations restrictions)  
+                        Explicitly spoof workstation name for NTLM authentication (default: empty string, bypasses userWorkstations restrictions)  
   --no-excel            Skip Excel report generation
   -v, --verbose         Verbose output
 
@@ -103,9 +88,6 @@ Examples:
   # With Kerberos using TGT from base64 string (bypasses channel binding)
   pyadrecon.py -dc dc01.domain.local -u admin -d DOMAIN.LOCAL --auth kerberos --tgt-base64 BQQAAAw...
 
-  # Bypass userWorkstations restrictions with workstation spoofing
-  pyadrecon.py -dc 192.168.1.1 -u restricted_user -p pass -d DOMAIN.LOCAL --workstation ALLOWED-PC
-
   # Only collect specific modules
   pyadrecon.py -dc 192.168.1.1 -u admin -p pass -d DOMAIN.LOCAL --collect users,groups,computers
 
@@ -115,6 +97,23 @@ Examples:
   # Generate Excel report from existing CSV files (standalone mode)
   pyadrecon.py --generate-excel-from /path/to/CSV-Files -o report.xlsx
 ````
+
+>[!TIP]
+>PyADRecon always tries LDAPS on TCP/636 first.
+>
+>If flag `--ssl` is not used, LDAP on TCP/389 may be tried as fallback.
+
+>[!WARNING]
+>If LDAP channel binding is enabled, this script will fail with `automatic bind not successful - strongerAuthRequired`, as ldap3 does not support it (see [here](https://github.com/cannatag/ldap3/issues/1049#issuecomment-1222826803)). You must use Kerberos authentication instead.
+>
+>If you use Kerberos auth, please create a valid `/etc/krb5.conf` and DC hostname entry in `/etc/hosts`. May read [this](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=32628#KerberosClientConfiguration-*NIX/etc/krb5.confConfiguration).
+>
+>Note that you can provide an already existing TGT ticket to the script via `--tgt-file` or `--tgt-base64`. For example, obtained by Netexec via `netexec smb <TARGET> <ARGS> --generate-tgt <FILEMAME>`.
+
+>[!NOTE]
+>PyADRecon uses an **empty workstation name by default** (like Impacket/NetExec), which bypasses `userWorkstations` restrictions automatically. This means accounts restricted to specific computers will work without any special flags!
+>
+>If needed, you can explicitly spoof a workstation name using `--workstation <name>` flag during NTLM authentication.
 
 ## Docker
 
