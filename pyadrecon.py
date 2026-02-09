@@ -693,6 +693,7 @@ class ADReconConfig:
     collect_computer_spns: bool = True
     collect_laps: bool = True
     collect_bitlocker: bool = True
+    collect_gmsa: bool = True
     collect_dmsa: bool = True
     collect_adcs: bool = True
 
@@ -3157,6 +3158,151 @@ class PyADRecon:
         logger.info(f"    Found {len(results)} dMSA accounts")
         return results
 
+    def collect_gmsa(self) -> List[Dict]:
+        """Collect Group Managed Service Accounts (gMSA)."""
+        logger.info("[-] Collecting Group Managed Service Accounts (gMSA)...")
+        results = []
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        try:
+            # Optional schema check (informational only)
+            try:
+                schema_check = self.search(
+                    self.schema_dn,
+                    "(lDAPDisplayName=msDS-GroupManagedServiceAccount)",
+                    ['lDAPDisplayName']
+                )
+                
+                if not schema_check:
+                    logger.debug("[*] gMSA schema class not found in schema, but will still attempt to search for gMSA objects")
+            except Exception as e:
+                logger.debug(f"[*] Could not check schema for gMSA support: {e}")
+            
+            # Use SDFlags control to request DACL for security descriptor
+            sd_flags_control = None
+            try:
+                sd_flags_control = security_descriptor_control(sdflags=0x04)
+            except Exception:
+                logger.debug("Could not create security descriptor control")
+            
+            # Collect gMSA accounts
+            gmsa_entries = self.search(
+                self.base_dn,
+                "(objectClass=msDS-GroupManagedServiceAccount)",
+                ['sAMAccountName', 'name', 'distinguishedName', 'description',
+                 'userAccountControl', 'pwdLastSet', 'lastLogonTimestamp',
+                 'servicePrincipalName', 'objectSid', 'whenCreated', 'whenChanged',
+                 'dNSHostName', 'msDS-AllowedToDelegateTo',
+                 'msDS-ManagedPasswordInterval', 'msDS-GroupMSAMembership',
+                 'nTSecurityDescriptor'],
+                controls=sd_flags_control if sd_flags_control else None
+            )
+
+            # Process gMSA entries
+            if gmsa_entries:
+                for entry in gmsa_entries:
+                    uac = get_attr(entry, 'userAccountControl', 0)
+                    uac_parsed = parse_uac(uac)
+
+                    # Password last set
+                    pwd_last_set = get_attr(entry, 'pwdLastSet')
+                    pwd_last_set_dt = None
+                    if isinstance(pwd_last_set, datetime):
+                        pwd_last_set_dt = pwd_last_set.replace(tzinfo=None) if pwd_last_set.tzinfo else pwd_last_set
+                    elif pwd_last_set:
+                        pwd_last_set_int = safe_int(pwd_last_set)
+                        pwd_last_set_dt = windows_timestamp_to_datetime(pwd_last_set_int) if pwd_last_set_int else None
+                    
+                    pwd_age_days = None
+                    if pwd_last_set_dt:
+                        pwd_age_delta = now - pwd_last_set_dt
+                        pwd_age_days = pwd_age_delta.days
+
+                    # Last logon
+                    last_logon = get_attr(entry, 'lastLogonTimestamp')
+                    last_logon_dt = None
+                    if isinstance(last_logon, datetime):
+                        last_logon_dt = last_logon.replace(tzinfo=None) if last_logon.tzinfo else last_logon
+                    elif last_logon:
+                        last_logon_int = safe_int(last_logon)
+                        last_logon_dt = windows_timestamp_to_datetime(last_logon_int) if last_logon_int else None
+                    
+                    logon_age_days = None
+                    if last_logon_dt:
+                        logon_age_delta = now - last_logon_dt
+                        logon_age_days = logon_age_delta.days
+
+                    # Password rotation interval (in days)
+                    pwd_interval = get_attr(entry, 'msDS-ManagedPasswordInterval', 30)
+                    pwd_interval_days = safe_int(pwd_interval) if pwd_interval else 30
+
+                    # SPNs
+                    spns = get_attr_list(entry, 'servicePrincipalName')
+                    spns_str = ", ".join(spns) if spns else ""
+
+                    # Delegation
+                    allowed_to_delegate = get_attr_list(entry, 'msDS-AllowedToDelegateTo')
+                    delegation_str = ", ".join(allowed_to_delegate) if allowed_to_delegate else ""
+
+                    # Parse who can retrieve the managed password
+                    allowed_principals = []
+                    try:
+                        # msDS-GroupMSAMembership contains a security descriptor
+                        # We can parse it to see which principals can retrieve the password
+                        membership_sd = get_attr(entry, 'msDS-GroupMSAMembership')
+                        if membership_sd and isinstance(membership_sd, bytes) and IMPACKET_AVAILABLE:
+                            try:
+                                sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=membership_sd)
+                                if sd['Dacl']:
+                                    for ace in sd['Dacl'].aces:
+                                        try:
+                                            # ACCESS_ALLOWED_ACE_TYPE = 0
+                                            if ace['AceType'] == 0:
+                                                sid = ace['Ace']['Sid'].formatCanonical()
+                                                principal_name = self._resolve_sid_to_name(sid)
+                                                allowed_principals.append(principal_name)
+                                        except Exception:
+                                            continue
+                            except Exception as e:
+                                logger.debug(f"Error parsing gMSA membership SD: {e}")
+                    except Exception as e:
+                        logger.debug(f"Error getting gMSA membership: {e}")
+                    
+                    allowed_principals_str = ", ".join(allowed_principals) if allowed_principals else "Not readable"
+
+                    # Parse write permissions (who can modify the account)
+                    write_principals = self._parse_write_permissions(entry)
+                    write_perms_str = ", ".join(write_principals) if write_principals else "None"
+
+                    results.append({
+                        "SAM Account Name": get_attr(entry, 'sAMAccountName', ''),
+                        "Name": get_attr(entry, 'name', ''),
+                        "Enabled": uac_parsed.get('Enabled', ''),
+                        "Description": get_attr(entry, 'description', ''),
+                        "DNS Hostname": get_attr(entry, 'dNSHostName', ''),
+                        "SPNs": spns_str,
+                        "Password Age (days)": pwd_age_days,
+                        "Password Rotation Interval (days)": pwd_interval_days,
+                        "Logon Age (days)": logon_age_days,
+                        "Delegation Services": delegation_str,
+                        "Allowed To Retrieve Password": allowed_principals_str,
+                        "Write Permissions": write_perms_str,
+                        "SID": sid_to_string(get_attr(entry, 'objectSid')),
+                        "Password LastSet": format_datetime(pwd_last_set_dt),
+                        "Last Logon Date": format_datetime(last_logon_dt),
+                        "whenCreated": format_datetime(get_attr(entry, 'whenCreated')),
+                        "whenChanged": format_datetime(get_attr(entry, 'whenChanged')),
+                        "Distinguished Name": get_attr(entry, 'distinguishedName', ''),
+                    })
+
+        except Exception as e:
+            logger.warning(f"Error collecting gMSA accounts: {e}")
+            logger.debug(traceback.format_exc())
+
+        self.results['gMSA'] = results
+        logger.info(f"    Found {len(results)} gMSA accounts")
+        return results
+
     def collect_schema_history(self) -> List[Dict]:
         """Collect schema history/updates."""
         logger.info("[-] Collecting Schema History - May take some time...")
@@ -3388,8 +3534,10 @@ class PyADRecon:
                 cn_name = get_attr(entry, 'cn', '')
                 obj_classes = get_attr(entry, 'objectClass', [])
                 
-                # Determine if it's a group or user
-                if 'group' in obj_classes:
+                # Determine object type - check computer first since computers also have 'user' class
+                if 'computer' in obj_classes:
+                    result = f"[Computer] {sam_name or cn_name}"
+                elif 'group' in obj_classes:
                     result = f"[Group] {sam_name or cn_name}"
                 elif 'user' in obj_classes:
                     result = f"[User] {sam_name or cn_name}"
@@ -3826,6 +3974,9 @@ class PyADRecon:
 
         if self.config.collect_bitlocker:
             self.collect_bitlocker()
+
+        if self.config.collect_gmsa:
+            self.collect_gmsa()
 
         if self.config.collect_dmsa:
             self.collect_dmsa()
@@ -4311,7 +4462,7 @@ class PyADRecon:
             # Define sheet order to match ADRecon
             SHEET_ORDER = [
                 'AboutPyADRecon', 'Users', 'UserSPNs', 'GroupMembers', 'Groups', 'OUs', 'Computers',
-                'ComputerSPNs', 'LAPS', 'ManagedServiceAccounts', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
+                'ComputerSPNs', 'LAPS', 'gMSA', 'dMSA', 'ManagedServiceAccounts', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
                 'DomainControllers', 'CertificateTemplates', 'CertificateAuthorities',
                 'PasswordPolicy', 'FineGrainedPasswordPolicy',
                 'SchemaHistory', 'Sites', 'Domain', 'Forest'
@@ -4748,7 +4899,7 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
         # Define sheet order to match ADRecon
         SHEET_ORDER = [
             'AboutPyADRecon', 'Users', 'UserSPNs', 'GroupMembers', 'Groups', 'OUs', 'Computers',
-            'ComputerSPNs', 'LAPS', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
+            'ComputerSPNs', 'LAPS', 'gMSA', 'dMSA', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
             'DomainControllers', 'CertificateTemplates', 'CertificateAuthorities',
             'PasswordPolicy', 'FineGrainedPasswordPolicy',
             'SchemaHistory', 'Sites', 'Domain', 'Forest'
@@ -5417,6 +5568,7 @@ Examples:
         config.collect_computer_spns = 'computerspns' in collect_modules
         config.collect_laps = 'laps' in collect_modules
         config.collect_bitlocker = 'bitlocker' in collect_modules
+        config.collect_gmsa = 'gmsa' in collect_modules or 'groupmanagedserviceaccounts' in collect_modules
         config.collect_dmsa = 'dmsa' in collect_modules or 'delegatedmanagedserviceaccounts' in collect_modules
         config.collect_adcs = 'adcs' in collect_modules or 'certificates' in collect_modules
 
