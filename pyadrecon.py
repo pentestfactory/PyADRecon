@@ -42,8 +42,15 @@ try:
     from ldap3.utils.conv import escape_filter_chars
     from ldap3.protocol.microsoft import security_descriptor_control
     LDAP3_AVAILABLE = True
+    
+    # Try to import ntlm-auth for workstation spoofing
+    try:
+        import ntlm_auth
+        NTLM_AUTH_AVAILABLE = True
+    except ImportError:
+        NTLM_AUTH_AVAILABLE = False
 except ImportError:
-    pass
+    NTLM_AUTH_AVAILABLE = False
 
 # Check for Kerberos SASL packages
 KERBEROS_AVAILABLE = False
@@ -668,6 +675,7 @@ class ADReconConfig:
     only_enabled: bool = False
     tgt_file: str = ""  # Path to TGT ccache file
     tgt_base64: str = ""  # Base64-encoded TGT ccache
+    workstation: str = ""  # Spoof workstation name for NTLM (bypasses userWorkstations restrictions)
 
     # Collection flags
     collect_forest: bool = True
@@ -838,20 +846,34 @@ class PyADRecon:
                     )
                 else:
                     # NTLM authentication
-                    logger.info("Using NTLM authentication...")
+                    if self.config.workstation:
+                        logger.info(f"Using NTLM authentication with workstation spoofing: {self.config.workstation}")
+                        # Monkey-patch the workstation name for ntlm-auth
+                        import socket
+                        original_gethostname = socket.gethostname
+                        socket.gethostname = lambda: self.config.workstation
+                    else:
+                        logger.info("Using NTLM authentication...")
+                    
                     user = self.config.username
                     if '\\' not in user and '@' not in user:
                         if self.config.domain:
                             user = f"{self.config.domain}\\{user}"
 
-                    self.conn = Connection(
-                        server,
-                        user=user,
-                        password=self.config.password,
-                        authentication=NTLM,
-                        auto_bind=True,
-                        auto_referrals=False
-                    )
+                    try:
+                        self.conn = Connection(
+                            server,
+                            user=user,
+                            password=self.config.password,
+                            authentication=NTLM,
+                            auto_bind=True,
+                            auto_referrals=False
+                        )
+                    finally:
+                        # Restore original gethostname if we patched it
+                        if self.config.workstation:
+                            import socket
+                            socket.gethostname = original_gethostname
 
                 if self.conn.bound:
                     logger.info(f"Successfully connected via {protocol} on port {port}")
@@ -5895,6 +5917,8 @@ Examples:
                        help='Only collect enabled objects')
     parser.add_argument('--collect', default='default',
                        help='Comma-separated modules to collect (default: all)')
+    parser.add_argument('--workstation', default='',
+                       help='Spoof workstation name for NTLM authentication (bypasses userWorkstations restrictions)')
     parser.add_argument('--no-excel', action='store_true',
                        help='Skip Excel report generation')
     parser.add_argument('-v', '--verbose', action='store_true',
@@ -5967,6 +5991,7 @@ Examples:
         only_enabled=args.only_enabled,
         tgt_file=args.tgt_file,
         tgt_base64=args.tgt_base64,
+        workstation=args.workstation,
     )
 
     # Configure collection based on modules

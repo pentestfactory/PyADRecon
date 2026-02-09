@@ -48,6 +48,9 @@ pacman -Syu pyadrecon
 >
 >Note that you can provide an already existing TGT ticket to the script via `--tgt-file` or `--tgt-base64`. For example, obtained by Netexec via `netexec smb <TARGET> <ARGS> --generate-tgt <FILEMAME>`.
 
+>[!TIP]
+>If a user account has `userWorkstations` attribute restrictions (allowed to log in only from specific computers), you can bypass this using the `--workstation` flag. This spoofs the workstation name during NTLM authentication, making the DC believe you're connecting from an allowed machine. Useful for pentesting with low-privilege accounts that have workstation restrictions.
+
 ````py
 usage: pyadrecon.py [-h] [--generate-excel-from CSV_DIR] [-dc DOMAIN_CONTROLLER] [-u USERNAME] [-p [PASSWORD]] [-d DOMAIN] [--auth {ntlm,kerberos}] [--tgt-file TGT_FILE] [--tgt-base64 TGT_BASE64]
                     [--ssl] [--port PORT] [-o OUTPUT] [--page-size PAGE_SIZE] [--threads THREADS] [--dormant-days DORMANT_DAYS] [--password-age PASSWORD_AGE] [--only-enabled] [--collect COLLECT]
@@ -82,6 +85,8 @@ options:
                         Days for password age threshold (default: 180)
   --only-enabled        Only collect enabled objects
   --collect COLLECT     Comma-separated modules to collect (default: all)
+  --workstation WORKSTATION
+                        Spoof workstation name for NTLM authentication (bypasses userWorkstations restrictions)  
   --no-excel            Skip Excel report generation
   -v, --verbose         Verbose output
 
@@ -97,6 +102,9 @@ Examples:
 
   # With Kerberos using TGT from base64 string (bypasses channel binding)
   pyadrecon.py -dc dc01.domain.local -u admin -d DOMAIN.LOCAL --auth kerberos --tgt-base64 BQQAAAw...
+
+  # Bypass userWorkstations restrictions with workstation spoofing
+  pyadrecon.py -dc 192.168.1.1 -u restricted_user -p pass -d DOMAIN.LOCAL --workstation ALLOWED-PC
 
   # Only collect specific modules
   pyadrecon.py -dc 192.168.1.1 -u admin -p pass -d DOMAIN.LOCAL --collect users,groups,computers
