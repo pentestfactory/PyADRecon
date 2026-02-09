@@ -3178,10 +3178,11 @@ class PyADRecon:
             except Exception as e:
                 logger.debug(f"[*] Could not check schema for gMSA support: {e}")
             
-            # Use SDFlags control to request DACL for security descriptor
+            # Use SDFlags control to request Owner (0x01) and DACL (0x04) for security descriptor
+            # 0x01 = OWNER_SECURITY_INFORMATION, 0x04 = DACL_SECURITY_INFORMATION
             sd_flags_control = None
             try:
-                sd_flags_control = security_descriptor_control(sdflags=0x04)
+                sd_flags_control = security_descriptor_control(sdflags=0x05)
             except Exception:
                 logger.debug("Could not create security descriptor control")
             
@@ -3201,6 +3202,17 @@ class PyADRecon:
             # Process gMSA entries
             if gmsa_entries:
                 for entry in gmsa_entries:
+                    # Parse security descriptor for owner
+                    owner_principal = None
+                    sd_data = get_attr(entry, 'nTSecurityDescriptor')
+                    if sd_data and isinstance(sd_data, bytes) and IMPACKET_AVAILABLE:
+                        try:
+                            sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=sd_data)
+                            if sd['OwnerSid']:
+                                owner_sid = sd['OwnerSid'].formatCanonical()
+                                owner_principal = self._resolve_sid_to_name(owner_sid)
+                        except Exception as e:
+                            logger.debug(f"Error parsing gMSA owner: {e}")
                     uac = get_attr(entry, 'userAccountControl', 0)
                     uac_parsed = parse_uac(uac)
 
@@ -3273,11 +3285,14 @@ class PyADRecon:
                     # Parse write permissions (who can modify the account)
                     write_principals = self._parse_write_permissions(entry)
                     write_perms_str = ", ".join(write_principals) if write_principals else "None"
+                    
+                    owner_str = owner_principal if owner_principal else "Unknown"
 
                     results.append({
                         "SAM Account Name": get_attr(entry, 'sAMAccountName', ''),
                         "Name": get_attr(entry, 'name', ''),
                         "Enabled": uac_parsed.get('Enabled', ''),
+                        "Owner": owner_str,
                         "Description": get_attr(entry, 'description', ''),
                         "DNS Hostname": get_attr(entry, 'dNSHostName', ''),
                         "SPNs": spns_str,
@@ -3337,14 +3352,15 @@ class PyADRecon:
 
     def _parse_enrollment_rights(self, entry) -> tuple:
         """Parse nTSecurityDescriptor to get principals with enrollment rights.
-        Returns: (enrollment_principals list, auto_enrollment_principals list)
+        Returns: (enrollment_principals list, auto_enrollment_principals list, owner_principal string)
         """
         enrollment_principals = []
         auto_enrollment_principals = []
+        owner_principal = None
         
         if not IMPACKET_AVAILABLE:
             logger.debug("Impacket not available for ACL parsing")
-            return (enrollment_principals, auto_enrollment_principals)
+            return (enrollment_principals, auto_enrollment_principals, owner_principal)
         
         try:
             # Certificate-Enrollment extended right GUID
@@ -3356,15 +3372,29 @@ class PyADRecon:
             sd_data = get_attr(entry, 'nTSecurityDescriptor')
             if not sd_data or not isinstance(sd_data, bytes):
                 logger.debug("No security descriptor data found or wrong type")
-                return (enrollment_principals, auto_enrollment_principals)
+                return (enrollment_principals, auto_enrollment_principals, owner_principal)
             
             # Parse the security descriptor using impacket
             sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=sd_data)
             
+            # Parse owner SID
+            try:
+                if sd['OwnerSid']:
+                    owner_sid = sd['OwnerSid'].formatCanonical()
+                    logger.debug(f"Owner SID: {owner_sid}")
+                    owner_principal = self._resolve_sid_to_name(owner_sid)
+                    logger.debug(f"Owner resolved to: {owner_principal}")
+                else:
+                    logger.debug("No OwnerSid in security descriptor")
+            except Exception as e:
+                logger.warning(f"Error parsing owner SID: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
+            
             # Check if DACL exists
             if not sd['Dacl']:
                 logger.debug("No DACL in security descriptor")
-                return (enrollment_principals, auto_enrollment_principals)
+                return (enrollment_principals, auto_enrollment_principals, owner_principal)
             
             # Parse each ACE in the DACL
             for ace in sd['Dacl'].aces:
@@ -3437,11 +3467,12 @@ class PyADRecon:
             import traceback
             logger.debug(traceback.format_exc())
             
-        return (enrollment_principals, auto_enrollment_principals)
+        return (enrollment_principals, auto_enrollment_principals, owner_principal)
     
     def _parse_write_permissions(self, entry) -> list:
-        """Parse nTSecurityDescriptor to get principals with write permissions (for ESC4).
-        Returns: list of principals with WriteDacl, WriteOwner, or WriteProperty rights
+        """Parse nTSecurityDescriptor to get principals with dangerous write permissions (for ESC4).
+        Returns: list of principals with WriteDacl, WriteOwner, GenericWrite, or GenericAll rights.
+        Excludes object-specific property writes (like 'Write Property Enroll') to avoid false positives.
         """
         write_principals = []
         
@@ -3460,24 +3491,46 @@ class PyADRecon:
             if not sd['Dacl']:
                 return write_principals
             
-            # Access rights for ESC4
-            # WRITE_DACL = 0x00040000
-            # WRITE_OWNER = 0x00080000  
-            # WRITE_PROPERTY / ADS_RIGHT_DS_WRITE_PROP = 0x00000020
-            # GENERIC_WRITE = 0x40000000
-            # GENERIC_ALL = 0x10000000
+            # Access rights for ESC4 (excluding object-specific property writes)
+            # WRITE_DACL = 0x00040000 - can modify DACL (dangerous)
+            # WRITE_OWNER = 0x00080000 - can take ownership (dangerous)
+            # GENERIC_WRITE = 0x40000000 - can write any property (dangerous)
+            # GENERIC_ALL = 0x10000000 - full control (dangerous)
+            # ADS_RIGHT_DS_WRITE_PROP = 0x00000020 - property write (only dangerous if not object-specific)
             
             for ace in sd['Dacl'].aces:
                 try:
                     sid = ace['Ace']['Sid'].formatCanonical()
                     ace_type = ace['AceType']
                     
-                    # Only check ALLOW ACEs
-                    if ace_type in [0, 5]:  # ACCESS_ALLOWED
+                    # Only check ALLOW ACEs (0 = standard, 5 = object-specific)
+                    if ace_type in [0, 5]:
                         mask = ace['Ace']['Mask']['Mask']
                         
-                        # Check for dangerous write permissions
-                        if mask & (0x00040000 | 0x00080000 | 0x00000020 | 0x40000000 | 0x10000000):
+                        # Check for dangerous write permissions (excluding property-specific writes)
+                        # WriteDacl, WriteOwner, GenericWrite, GenericAll are always dangerous
+                        has_dangerous_write = bool(mask & (0x00040000 | 0x00080000 | 0x40000000 | 0x10000000))
+                        
+                        # For WriteProperty (0x00000020), only flag if it's NOT object-specific
+                        # Object-specific ACEs (type 5) with an ObjectType GUID are limited to specific properties
+                        has_generic_write_property = False
+                        if mask & 0x00000020:  # ADS_RIGHT_DS_WRITE_PROP
+                            if ace_type == 5:  # ACCESS_ALLOWED_OBJECT_ACE_TYPE
+                                # Check if ObjectType is present (ACE_OBJECT_TYPE_PRESENT = 0x1)
+                                try:
+                                    ace_data = ace['Ace']
+                                    flags = ace_data.get('Flags', 0)
+                                    # If no ObjectType GUID (flags & 0x1 == 0), it applies to ALL properties
+                                    if not (flags & 0x1):
+                                        has_generic_write_property = True
+                                except (KeyError, TypeError):
+                                    # If we can't determine, assume it's generic (safer for detection)
+                                    has_generic_write_property = True
+                            else:
+                                # Standard ACE with write property = applies to all properties
+                                has_generic_write_property = True
+                        
+                        if has_dangerous_write or has_generic_write_property:
                             principal_name = self._resolve_sid_to_name(sid)
                             if principal_name not in write_principals:
                                 write_principals.append(principal_name)
@@ -3490,6 +3543,66 @@ class PyADRecon:
             logger.debug(f"Error parsing write permissions: {e}")
             
         return write_principals
+    
+    def _get_low_privilege_sids(self) -> set:
+        """Get a set of well-known low-privilege SIDs including domain-specific ones."""
+        low_priv_sids = {
+            'S-1-1-0',       # Everyone
+            'S-1-5-11',      # Authenticated Users
+            'S-1-5-7',       # Anonymous Logon
+            'S-1-5-32-545',  # BUILTIN\Users
+            'S-1-5-32-546',  # BUILTIN\Guests
+        }
+        
+        # Add domain-specific SIDs
+        try:
+            # Get domain SID from base DN
+            domain_entries = self.search(
+                self.base_dn,
+                "(objectClass=domain)",
+                ['objectSid'],
+                search_scope=BASE
+            )
+            
+            if domain_entries:
+                domain_sid = get_attr(domain_entries[0], 'objectSid', '')
+                if domain_sid:
+                    # Domain Users: <domain-sid>-513
+                    low_priv_sids.add(f"{domain_sid}-513")
+                    # Domain Computers: <domain-sid>-515
+                    low_priv_sids.add(f"{domain_sid}-515")
+                    # Domain Guests: <domain-sid>-514
+                    low_priv_sids.add(f"{domain_sid}-514")
+        except Exception as e:
+            logger.debug(f"Could not get domain SID for low-priv detection: {e}")
+        
+        return low_priv_sids
+    
+    def _is_low_privilege_principal(self, principal_name: str) -> bool:
+        """Check if a principal is low-privileged based on SID resolution."""
+        # Extract SID from principal name if it's in [Type] Name format
+        if '[SID]' in principal_name:
+            # Extract SID from "[SID] S-1-..."
+            sid_match = re.search(r'S-1-[0-9-]+', principal_name)
+            if sid_match:
+                sid = sid_match.group(0)
+                low_priv_sids = self._get_low_privilege_sids()
+                return sid in low_priv_sids
+        
+        # For resolved names, check against well-known low-privilege group names (exact match)
+        principal_lower = principal_name.lower()
+        low_priv_names = {
+            'everyone',
+            'authenticated users',
+            'anonymous logon',
+            'builtin\\users',
+            'builtin\\guests',
+            '[group] domain users',
+            '[group] domain computers',
+            '[group] domain guests',
+        }
+        
+        return principal_lower in low_priv_names
     
     def _resolve_sid_to_name(self, sid: str) -> str:
         """Resolve a SID to a readable name (user/group) with caching."""
@@ -3563,9 +3676,10 @@ class PyADRecon:
             # Certificate templates are stored in CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration
             pki_dn = f"CN=Certificate Templates,CN=Public Key Services,CN=Services,{self.config_dn}"
             
-            # Use SDFlags control to request DACL (0x04) from nTSecurityDescriptor
-            # This is required to read ACLs even with low-privileged accounts
-            sd_flags_control = security_descriptor_control(sdflags=0x04)
+            # Use SDFlags control to request Owner (0x01) and DACL (0x04) from nTSecurityDescriptor
+            # 0x01 = OWNER_SECURITY_INFORMATION, 0x04 = DACL_SECURITY_INFORMATION
+            # This is required to read ACLs and owner even with low-privileged accounts
+            sd_flags_control = security_descriptor_control(sdflags=0x05)
             
             entries = self.search(
                 pki_dn,
@@ -3582,8 +3696,8 @@ class PyADRecon:
             )
 
             for entry in entries:
-                # Parse enrollment permissions from security descriptor
-                enrollment_principals, auto_enrollment_principals = self._parse_enrollment_rights(entry)
+                # Parse enrollment permissions and owner from security descriptor
+                enrollment_principals, auto_enrollment_principals, owner_principal = self._parse_enrollment_rights(entry)
                 
                 # Parse write permissions for ESC4
                 write_principals = self._parse_write_permissions(entry)
@@ -3627,15 +3741,14 @@ class PyADRecon:
                 risk_level = 'Low'
                 risk_factors = []
                 
-                # Check if low-privileged users can enroll  
+                # Check if low-privileged users can enroll using SID-based detection
                 low_priv_can_enroll = False
                 only_admins_can_enroll = False
                 
                 if enrollment_principals:
                     for principal in enrollment_principals:
-                        principal_lower = principal.lower()
-                        # Check for low-privileged groups
-                        if any(x in principal_lower for x in ['authenticated users', 'domain users', 'domain computers', 'users', 'everyone']):
+                        # Use SID-based low-privilege detection
+                        if self._is_low_privilege_principal(principal):
                             low_priv_can_enroll = True
                             break
                     
@@ -3668,34 +3781,10 @@ class PyADRecon:
                             for principal in enrollment_principals
                         )
                 
-                # Check for non-admin write permissions (ESC4)
+                # Check for non-admin write permissions (ESC4) using SID-based detection
                 low_priv_can_write = False
                 for principal in write_principals:
-                    principal_lower = principal.lower()
-                    # Exclude admin groups/users from ESC4 check (check for various admin indicators)
-                    is_admin = any(x in principal_lower for x in [
-                        # Domain-level admin groups
-                        'domain admins', 'enterprise admins', 'schema admins', 'administrator',
-                        # Built-in privileged groups
-                        'builtin\\administrators', 'account operators', 'server operators', 
-                        'backup operators', 'print operators', 'group policy creator owners',
-                        # Service and infrastructure groups
-                        'ras and ias servers', 'cert publishers', 'cryptographic operators',
-                        'network configuration operators', 'dnsadmins', 'dns admins',
-                        'domain controllers', 'enterprise read-only domain controllers',
-                        'key admins', 'enterprise key admins', 'protected users', 'system',
-                        # Well-known privileged SIDs
-                        's-1-5-9',      # Enterprise Domain Controllers
-                        's-1-5-18',     # Local System
-                        's-1-5-19',     # Local Service
-                        's-1-5-20',     # Network Service
-                        's-1-5-32-544', # Administrators
-                        's-1-5-32-548', # Account Operators
-                        's-1-5-32-549', # Server Operators
-                        's-1-5-32-550', # Print Operators
-                        's-1-5-32-551'  # Backup Operators
-                    ])
-                    if not is_admin:
+                    if self._is_low_privilege_principal(principal):
                         low_priv_can_write = True
                         break
                 
@@ -3760,17 +3849,27 @@ class PyADRecon:
                 
                 if low_priv_can_enroll and enrollment_principals and risk_level == 'Low':
                     risk_factors.append('Low-privileged users can enroll')
+                
+                # Check if owner is low-privileged (potential ESC4 variant)
+                low_priv_owner = False
+                if owner_principal and self._is_low_privilege_principal(owner_principal):
+                    low_priv_owner = True
+                    if risk_level not in ['CRITICAL', 'HIGH']:
+                        risk_level = 'HIGH'
+                    risk_factors.append('ESC4: Low-privileged owner can modify template')
                     
                 # Format enrollment and write permissions
                 enroll_perms_str = '; '.join(enrollment_principals) if enrollment_principals else 'None'
                 auto_enroll_perms_str = '; '.join(auto_enrollment_principals) if auto_enrollment_principals else 'None'
                 write_perms_str = '; '.join(write_principals) if write_principals else 'None'
                 esc_list = ', '.join(esc_vulns) if esc_vulns else 'None'
+                owner_str = owner_principal if owner_principal else 'Unknown'
                     
                 results.append({
                     "Template Name": get_attr(entry, 'cn', ''),
                     "Display Name": get_attr(entry, 'displayName', ''),
                     "Distinguished Name": get_attr(entry, 'distinguishedName', ''),
+                    "Owner": owner_str,
                     "Schema Version": safe_int(get_attr(entry, 'msPKI-Template-Schema-Version', 0)),
                     "Created": format_datetime(get_attr(entry, 'whenCreated')),
                     "Modified": format_datetime(get_attr(entry, 'whenChanged')),
@@ -4412,16 +4511,23 @@ class PyADRecon:
                     if "Enrollee Supplies Subject" in headers:
                         enrollee_cell = ws.cell(row=row_idx, column=headers["Enrollee Supplies Subject"])
                         if enrollee_cell.value in [True, "TRUE"]:
-                            # Check if this is actually risky (has client auth)
-                            has_client_auth = False
-                            if "Client Authentication" in headers:
-                                client_auth_cell = ws.cell(row=row_idx, column=headers["Client Authentication"])
-                                has_client_auth = client_auth_cell.value in [True, "TRUE"]
+                            # Only highlight red if this is actually part of an ESC1 vulnerability
+                            # Check if this row has ESC1 flagged
+                            is_esc1 = False
+                            if "ESC Vulnerabilities" in headers:
+                                esc_cell = ws.cell(row=row_idx, column=headers["ESC Vulnerabilities"])
+                                esc_value = str(esc_cell.value) if esc_cell.value else ""
+                                is_esc1 = "ESC1" in esc_value
                             
-                            if has_client_auth:
+                            if is_esc1:
                                 enrollee_cell.fill = red_fill
-                            else:
-                                enrollee_cell.fill = yellow_fill
+                            # Don't highlight if not part of ESC1 (benign use case)
+                    
+                    # Highlight Client Authentication (ORANGE - critical for exploitation)
+                    if "Client Authentication" in headers:
+                        client_auth_cell = ws.cell(row=row_idx, column=headers["Client Authentication"])
+                        if client_auth_cell.value in [True, "TRUE"]:
+                            client_auth_cell.fill = orange_fill
                     
                     # Highlight Any Purpose EKU (ORANGE - allows arbitrary usage)
                     if "Any Purpose EKU" in headers:
@@ -4434,6 +4540,35 @@ class PyADRecon:
                         enrollment_agent_cell = ws.cell(row=row_idx, column=headers["Enrollment Agent"])
                         if enrollment_agent_cell.value in [True, "TRUE"]:
                             enrollment_agent_cell.fill = orange_fill
+                    
+                    # Highlight Allows SAN (ORANGE - similar to Enrollee Supplies Subject)
+                    if "Allows SAN" in headers:
+                        allows_san_cell = ws.cell(row=row_idx, column=headers["Allows SAN"])
+                        if allows_san_cell.value in [True, "TRUE"]:
+                            allows_san_cell.fill = orange_fill
+                    
+                    # Highlight Exportable Key (YELLOW - private key can be exported)
+                    if "Exportable Key" in headers:
+                        exportable_key_cell = ws.cell(row=row_idx, column=headers["Exportable Key"])
+                        if exportable_key_cell.value in [True, "TRUE"]:
+                            exportable_key_cell.fill = yellow_fill
+                    
+                    # Highlight Auto-Enrollment (YELLOW - informational, auto-enrollment enabled)
+                    if "Auto-Enrollment" in headers:
+                        auto_enrollment_cell = ws.cell(row=row_idx, column=headers["Auto-Enrollment"])
+                        if auto_enrollment_cell.value in [True, "TRUE"]:
+                            auto_enrollment_cell.fill = yellow_fill
+                    
+                    # Highlight Requires Manager Approval (GREEN when TRUE, ORANGE when FALSE)
+                    if "Requires Manager Approval" in headers:
+                        approval_cell = ws.cell(row=row_idx, column=headers["Requires Manager Approval"])
+                        if approval_cell.value in [True, "TRUE"]:
+                            # Green for approval required (good security)
+                            green_fill = PatternFill(start_color="B3FFB3", end_color="B3FFB3", fill_type="solid")
+                            approval_cell.fill = green_fill
+                        elif approval_cell.value in [False, "FALSE"]:
+                            # Orange for no approval required (risky)
+                            approval_cell.fill = orange_fill
 
     def export_xlsx(self, output_dir: str, domain_name: str = ""):
         """Export results to Excel file (optimized for large datasets)."""
