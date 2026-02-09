@@ -1,6 +1,6 @@
 # PyADRecon
 
-Python3 implementation of [ADRecon](https://github.com/sense-of-security/ADRecon)
+Python3 implementation of an improved [ADRecon](https://github.com/sense-of-security/ADRecon)
 
 > ADRecon is a tool which gathers information about MS Active Directory and generates an XSLX report to provide a holistic picture of the current state of the target AD environment.
 
@@ -156,12 +156,17 @@ Though, you can freely select your own collection of modules to run:
 - `gpos`
 - `gplinks`
 
-**Security**
+**Passwords & Credentials**
 - `passwordpolicy`
 - `fgpp` or `finegrainedpasswordpolicy`
 - `laps`
 - `bitlocker`
+
+**Managed Service Accounts**
+- `gmsa` or `groupmanagedserviceaccounts` (beta)
 - `dmsa` or `delegatedmanagedserviceaccounts` (beta)
+
+**Certificates**
 - `adcs` or `certificates` (beta)
 
 **DNS**
