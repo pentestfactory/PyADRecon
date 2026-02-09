@@ -159,13 +159,17 @@ Though, you can freely select your own collection of modules to run:
 - `gpos`
 - `gplinks`
 
-**Security**
+**Passwords & Credentials**
 - `passwordpolicy`
 - `fgpp` or `finegrainedpasswordpolicy`
 - `laps`
 - `bitlocker`
+
+**Managed Service Accounts**
 - `gmsa` or `groupmanagedserviceaccounts` (beta)
 - `dmsa` or `delegatedmanagedserviceaccounts` (beta)
+
+**Certificates**
 - `adcs` or `certificates` (beta)
 
 **DNS**
