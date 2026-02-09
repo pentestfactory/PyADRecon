@@ -1,3 +1,10 @@
+## [0.10.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.10.0...v0.10.1) (2026-02-09)
+
+
+### Bug Fixes
+
+* use empty workstation name instead of spoofing ([80329a9](https://github.com/l4rm4nd/PyADRecon/commit/80329a9a9ba7825bf7ee9b2d6ef04f1da76edf0a))
+
 ## [0.10.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.9.1...v0.10.0) (2026-02-09)
 
 
@@ -30,11 +37,4 @@
 ### Features
 
 * add dMSA; fixes [#3](https://github.com/l4rm4nd/PyADRecon/issues/3) ([6490aa8](https://github.com/l4rm4nd/PyADRecon/commit/6490aa8d7b7b46b6fa345c9d52628930f28d39e4))
-
-## [0.7.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.7.1...v0.7.2) (2026-02-08)
-
-
-### Bug Fixes
-
-* adcs acl permission error ([5c10964](https://github.com/l4rm4nd/PyADRecon/commit/5c10964d650f13dac914b959cd8209628ed6d87c))
 
