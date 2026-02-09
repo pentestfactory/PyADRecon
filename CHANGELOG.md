@@ -1,3 +1,10 @@
+## [0.8.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.7.2...v0.8.0) (2026-02-09)
+
+
+### Features
+
+* add dMSA; fixes [#3](https://github.com/l4rm4nd/PyADRecon/issues/3) ([6490aa8](https://github.com/l4rm4nd/PyADRecon/commit/6490aa8d7b7b46b6fa345c9d52628930f28d39e4))
+
 ## [0.7.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.7.1...v0.7.2) (2026-02-08)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * remove obsolete argparse --threads ([baed441](https://github.com/l4rm4nd/PyADRecon/commit/baed441f1ed7aad74b86356fa9159c958a323cf7))
-
-## [0.6.4](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.3...v0.6.4) (2026-02-07)
-
-
-### Bug Fixes
-
-* parsing logic for logon workstations column in users tab ([5a8b551](https://github.com/l4rm4nd/PyADRecon/commit/5a8b5515261e71baa9c395ee3d3640b66babe57c))
 
