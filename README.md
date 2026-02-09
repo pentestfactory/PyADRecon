@@ -154,6 +154,7 @@ Though, you can freely select your own collection of modules to run:
 - `fgpp` or `finegrainedpasswordpolicy`
 - `laps`
 - `bitlocker`
+- `dmsa` or `delegatedmanagedserviceaccounts` (beta)
 - `adcs` or `certificates` (beta)
 
 **DNS**

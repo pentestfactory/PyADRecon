@@ -24,6 +24,7 @@ import logging
 import threading
 import subprocess
 import tempfile
+import traceback
 
 # Third-party imports
 LDAP3_AVAILABLE = False
@@ -692,6 +693,7 @@ class ADReconConfig:
     collect_computer_spns: bool = True
     collect_laps: bool = True
     collect_bitlocker: bool = True
+    collect_dmsa: bool = True
     collect_adcs: bool = True
 
 
@@ -3028,6 +3030,133 @@ class PyADRecon:
         logger.info(f"    Found {len(results)} BitLocker recovery keys")
         return results
 
+    def collect_dmsa(self) -> List[Dict]:
+        """Collect Delegated Managed Service Accounts (dMSA) - Windows Server 2025+."""
+        logger.info("[-] Collecting Delegated Managed Service Accounts (dMSA)...")
+        results = []
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        try:
+            # First check if the schema supports dMSA (Windows Server 2025+ feature)
+            # Try to query the schema for the dMSA object class
+            try:
+                schema_check = self.search(
+                    self.schema_dn,
+                    "(lDAPDisplayName=msDS-DelegatedManagedServiceAccount)",
+                    ['lDAPDisplayName']
+                )
+                
+                if not schema_check:
+                    logger.warning("[*] dMSA not supported - requires Windows Server 2025+ AD schema")
+                    self.results['dMSA'] = results
+                    return results
+            except Exception as e:
+                logger.warning(f"[*] dMSA not supported in this AD environment: {e}")
+                self.results['dMSA'] = results
+                return results
+            
+            # Collect dMSA (Delegated Managed Service Account - Windows Server 2025+)
+            # These are subClassOf computer, not user objects
+            # Start with basic attributes that exist in all AD versions
+            dmsa_entries = self.search(
+                self.base_dn,
+                "(objectClass=msDS-DelegatedManagedServiceAccount)",
+                ['sAMAccountName', 'name', 'distinguishedName', 'description',
+                 'userAccountControl', 'pwdLastSet', 'lastLogonTimestamp',
+                 'servicePrincipalName', 'objectSid', 'whenCreated', 'whenChanged',
+                 'dNSHostName', 'msDS-AllowedToDelegateTo']
+            )
+
+            # Process dMSA entries
+            if dmsa_entries:
+                for entry in dmsa_entries:
+                    uac = get_attr(entry, 'userAccountControl', 0)
+                    uac_parsed = parse_uac(uac)
+
+                    # Password last set
+                    pwd_last_set = get_attr(entry, 'pwdLastSet')
+                    pwd_last_set_dt = None
+                    if isinstance(pwd_last_set, datetime):
+                        pwd_last_set_dt = pwd_last_set.replace(tzinfo=None) if pwd_last_set.tzinfo else pwd_last_set
+                    elif pwd_last_set:
+                        pwd_last_set_int = safe_int(pwd_last_set)
+                        pwd_last_set_dt = windows_timestamp_to_datetime(pwd_last_set_int) if pwd_last_set_int else None
+                    
+                    pwd_age_days = None
+                    if pwd_last_set_dt:
+                        pwd_age = now - pwd_last_set_dt
+                        pwd_age_days = pwd_age.days
+
+                    # Last logon
+                    last_logon = get_attr(entry, 'lastLogonTimestamp')
+                    last_logon_dt = None
+                    if isinstance(last_logon, datetime):
+                        last_logon_dt = last_logon.replace(tzinfo=None) if last_logon.tzinfo else last_logon
+                    elif last_logon:
+                        last_logon_int = safe_int(last_logon)
+                        last_logon_dt = windows_timestamp_to_datetime(last_logon_int) if last_logon_int else None
+                    
+                    logon_age_days = None
+                    if last_logon_dt:
+                        logon_age = now - last_logon_dt
+                        logon_age_days = logon_age.days
+
+                    # Check for badSuccessor vulnerability (dMSA specific)
+                    # BadSuccessor occurs when msDS-ManagedAccountPrecededByLink is set
+                    # This allows the dMSA to impersonate the "superseded" account
+                    # Note: These attributes only exist in Windows Server 2025+
+                    bad_successor_vuln = False
+                    superseded_account = ""
+                    dmsa_state = ""
+                    
+                    # Try to get dMSA-specific attributes if they exist
+                    try:
+                        superseded_account = get_attr(entry, 'msDS-ManagedAccountPrecededByLink', '')
+                        if superseded_account:
+                            bad_successor_vuln = True
+                        dmsa_state = get_attr(entry, 'msDS-DelegatedMSAState', '')
+                    except Exception:
+                        # Attributes don't exist in this AD schema version
+                        pass
+
+                    # SPNs
+                    spns = get_attr_list(entry, 'servicePrincipalName')
+                    spns_str = ", ".join(spns) if spns else ""
+
+                    # Delegation
+                    allowed_to_delegate = get_attr_list(entry, 'msDS-AllowedToDelegateTo')
+                    delegation_str = ", ".join(allowed_to_delegate) if allowed_to_delegate else ""
+
+                    results.append({
+                        "SAM Account Name": get_attr(entry, 'sAMAccountName', ''),
+                        "Name": get_attr(entry, 'name', ''),
+                        "Enabled": uac_parsed.get('Enabled', ''),
+                        "Description": get_attr(entry, 'description', ''),
+                        "DNS Hostname": get_attr(entry, 'dNSHostName', ''),
+                        "SPNs": spns_str,
+                        "Password Age (days)": pwd_age_days,
+                        "Logon Age (days)": logon_age_days,
+                        "Delegation Services": delegation_str,
+                        "Superseded Account (BadSuccessor)": superseded_account,
+                        "dMSA State": dmsa_state,
+                        "badSuccessor Vulnerable": bad_successor_vuln,
+                        "Risk Level": "CRITICAL" if bad_successor_vuln else "Low",
+                        "SID": sid_to_string(get_attr(entry, 'objectSid')),
+                        "Password LastSet": format_datetime(pwd_last_set_dt),
+                        "Last Logon Date": format_datetime(last_logon_dt),
+                        "whenCreated": format_datetime(get_attr(entry, 'whenCreated')),
+                        "whenChanged": format_datetime(get_attr(entry, 'whenChanged')),
+                        "Distinguished Name": get_attr(entry, 'distinguishedName', ''),
+                    })
+
+        except Exception as e:
+            logger.warning(f"Error collecting dMSA accounts: {e}")
+            logger.debug(traceback.format_exc())
+
+        self.results['dMSA'] = results
+        logger.info(f"    Found {len(results)} dMSA accounts")
+        return results
+
     def collect_schema_history(self) -> List[Dict]:
         """Collect schema history/updates."""
         logger.info("[-] Collecting Schema History - May take some time...")
@@ -3698,6 +3827,9 @@ class PyADRecon:
         if self.config.collect_bitlocker:
             self.collect_bitlocker()
 
+        if self.config.collect_dmsa:
+            self.collect_dmsa()
+
         if self.config.collect_adcs:
             self.collect_certificate_templates()
             self.collect_certificate_authorities()
@@ -4057,6 +4189,100 @@ class PyADRecon:
                         # Highlight password field YELLOW if it contains a value
                         if password_cell.value and str(password_cell.value).strip():
                             password_cell.fill = yellow_fill
+        
+        # Format ManagedServiceAccounts sheet
+        if "Managed Service Accounts" in wb.sheetnames:
+            ws = wb["Managed Service Accounts"]
+            if ws.max_row > 1:  # Has data beyond header
+                # Find column indices for security-relevant fields
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                # Apply formatting to data rows (skip header)
+                for row_idx in range(2, ws.max_row + 1):
+                    # Check for badSuccessor vulnerability (CRITICAL - RED)
+                    if "badSuccessor Vulnerable" in headers:
+                        vuln_cell = ws.cell(row=row_idx, column=headers["badSuccessor Vulnerable"])
+                        if vuln_cell.value in [True, "TRUE"]:
+                            vuln_cell.fill = red_fill
+                    
+                    # Highlight Risk Level column
+                    if "Risk Level" in headers:
+                        risk_cell = ws.cell(row=row_idx, column=headers["Risk Level"])
+                        risk_value = str(risk_cell.value).upper() if risk_cell.value else ""
+                        
+                        if risk_value == "CRITICAL":
+                            risk_cell.fill = red_fill
+                        elif risk_value == "HIGH":
+                            risk_cell.fill = red_fill
+                        elif risk_value == "MEDIUM":
+                            risk_cell.fill = orange_fill
+                    
+                    # Highlight disabled accounts (YELLOW - informational)
+                    if "Enabled" in headers:
+                        enabled_cell = ws.cell(row=row_idx, column=headers["Enabled"])
+                        if enabled_cell.value in [False, "FALSE"]:
+                            enabled_cell.fill = yellow_fill
+        
+        # Format CertificateTemplates sheet
+        if "CertificateTemplates" in wb.sheetnames:
+            ws = wb["CertificateTemplates"]
+            if ws.max_row > 1:  # Has data beyond header
+                # Find column indices for security-relevant fields
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                # Apply formatting to data rows (skip header)
+                for row_idx in range(2, ws.max_row + 1):
+                    # Highlight Risk Level column (RED for CRITICAL/HIGH, ORANGE for MEDIUM)
+                    if "Risk Level" in headers:
+                        risk_cell = ws.cell(row=row_idx, column=headers["Risk Level"])
+                        risk_value = str(risk_cell.value).upper() if risk_cell.value else ""
+                        
+                        if risk_value in ["CRITICAL", "HIGH"]:
+                            risk_cell.fill = red_fill
+                        elif risk_value == "MEDIUM":
+                            risk_cell.fill = orange_fill
+                    
+                    # Highlight ESC Vulnerabilities column (RED if any ESC vulns present)
+                    if "ESC Vulnerabilities" in headers:
+                        esc_cell = ws.cell(row=row_idx, column=headers["ESC Vulnerabilities"])
+                        esc_value = str(esc_cell.value) if esc_cell.value else ""
+                        
+                        # Check if any ESC vulnerability is present (not "None")
+                        if esc_value and esc_value.strip().upper() != "NONE":
+                            # Highlight based on specific ESC types
+                            if "ESC1" in esc_value or "ESC4" in esc_value:
+                                esc_cell.fill = red_fill
+                            elif "ESC2" in esc_value or "ESC3" in esc_value:
+                                esc_cell.fill = orange_fill
+                            elif "ESC9" in esc_value:
+                                esc_cell.fill = yellow_fill
+                    
+                    # Highlight critical individual flags
+                    if "Enrollee Supplies Subject" in headers:
+                        enrollee_cell = ws.cell(row=row_idx, column=headers["Enrollee Supplies Subject"])
+                        if enrollee_cell.value in [True, "TRUE"]:
+                            # Check if this is actually risky (has client auth)
+                            has_client_auth = False
+                            if "Client Authentication" in headers:
+                                client_auth_cell = ws.cell(row=row_idx, column=headers["Client Authentication"])
+                                has_client_auth = client_auth_cell.value in [True, "TRUE"]
+                            
+                            if has_client_auth:
+                                enrollee_cell.fill = red_fill
+                            else:
+                                enrollee_cell.fill = yellow_fill
+                    
+                    # Highlight Any Purpose EKU (ORANGE - allows arbitrary usage)
+                    if "Any Purpose EKU" in headers:
+                        any_purpose_cell = ws.cell(row=row_idx, column=headers["Any Purpose EKU"])
+                        if any_purpose_cell.value in [True, "TRUE"]:
+                            any_purpose_cell.fill = orange_fill
+                    
+                    # Highlight Enrollment Agent (ORANGE - can request certs for others)
+                    if "Enrollment Agent" in headers:
+                        enrollment_agent_cell = ws.cell(row=row_idx, column=headers["Enrollment Agent"])
+                        if enrollment_agent_cell.value in [True, "TRUE"]:
+                            enrollment_agent_cell.fill = orange_fill
 
     def export_xlsx(self, output_dir: str, domain_name: str = ""):
         """Export results to Excel file (optimized for large datasets)."""
@@ -4085,7 +4311,7 @@ class PyADRecon:
             # Define sheet order to match ADRecon
             SHEET_ORDER = [
                 'AboutPyADRecon', 'Users', 'UserSPNs', 'GroupMembers', 'Groups', 'OUs', 'Computers',
-                'ComputerSPNs', 'LAPS', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
+                'ComputerSPNs', 'LAPS', 'ManagedServiceAccounts', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
                 'DomainControllers', 'CertificateTemplates', 'CertificateAuthorities',
                 'PasswordPolicy', 'FineGrainedPasswordPolicy',
                 'SchemaHistory', 'Sites', 'Domain', 'Forest'
@@ -4093,7 +4319,8 @@ class PyADRecon:
             
             # Friendly sheet names mapping
             SHEET_NAME_MAPPING = {
-                'AboutPyADRecon': 'About PyADRecon'
+                'AboutPyADRecon': 'About PyADRecon',
+                'ManagedServiceAccounts': 'Managed Service Accounts'
             }
 
             # Create About PyADRecon sheet first (if it exists)
@@ -5190,6 +5417,7 @@ Examples:
         config.collect_computer_spns = 'computerspns' in collect_modules
         config.collect_laps = 'laps' in collect_modules
         config.collect_bitlocker = 'bitlocker' in collect_modules
+        config.collect_dmsa = 'dmsa' in collect_modules or 'delegatedmanagedserviceaccounts' in collect_modules
         config.collect_adcs = 'adcs' in collect_modules or 'certificates' in collect_modules
 
     # Create output directory
