@@ -1,3 +1,15 @@
+## [0.9.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.8.0...v0.9.0) (2026-02-09)
+
+
+### Features
+
+* add gMSA detection ([169665e](https://github.com/l4rm4nd/PyADRecon/commit/169665e9b6279bff50ad3ce938b5e5cb0a753740))
+
+
+### Bug Fixes
+
+* parsing and risk analysis for adcs ([17cbeb4](https://github.com/l4rm4nd/PyADRecon/commit/17cbeb419a71df5bc74b746a6792379850cc537f))
+
 ## [0.8.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.7.2...v0.8.0) (2026-02-09)
 
 
@@ -25,11 +37,4 @@
 ### Features
 
 * add adcs and esc detection ([4d85e0c](https://github.com/l4rm4nd/PyADRecon/commit/4d85e0cd37b80129d86b5dc1115309ea575c26bb))
-
-## [0.6.5](https://github.com/l4rm4nd/PyADRecon/compare/v0.6.4...v0.6.5) (2026-02-07)
-
-
-### Bug Fixes
-
-* remove obsolete argparse --threads ([baed441](https://github.com/l4rm4nd/PyADRecon/commit/baed441f1ed7aad74b86356fa9159c958a323cf7))
 
