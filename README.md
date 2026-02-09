@@ -113,8 +113,10 @@ Examples:
 >
 >Note that you can provide an already existing TGT ticket to the script via `--tgt-file` or `--tgt-base64`. For example, obtained by Netexec via `netexec smb <TARGET> <ARGS> --generate-tgt <FILEMAME>`.
 
->[!WARNING]
->If a user account has `userWorkstations` attribute restrictions (allowed to log in only from specific computers), you can bypass this using the `--workstation` flag. This spoofs the workstation name during NTLM authentication, making the DC believe you're connecting from an allowed machine. Useful for pentesting with low-privilege accounts that have workstation restrictions.
+>[!NOTE]
+>PyADRecon uses an **empty workstation name by default** (like Impacket/NetExec), which bypasses `userWorkstations` restrictions automatically. This means accounts restricted to specific computers will work without any special flags!
+>
+>If needed, you can explicitly spoof a workstation name using `--workstation <name>` flag during NTLM authentication.
 
 ## Docker
 
