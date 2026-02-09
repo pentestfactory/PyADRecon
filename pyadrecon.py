@@ -2929,12 +2929,29 @@ class PyADRecon:
                 logger.warning("[*] LAPS is not installed in this environment")
                 return results
 
-            # Get LAPS passwords for computers
+            # Get the schemaIDGUID for ms-Mcs-AdmPwd (forest-specific)
+            logger.info("    Fetching ms-Mcs-AdmPwd schemaIDGUID...")
+            laps_attr_guid = self._get_schema_guid("ms-Mcs-AdmPwd")
+            if laps_attr_guid:
+                logger.info(f"    Found LAPS attribute GUID: {laps_attr_guid}")
+            else:
+                logger.warning("    Could not retrieve LAPS attribute GUID - reader detection may be inaccurate")
+
+            # Use SDFlags control to request Owner (0x01), Group (0x02), and DACL (0x04) from nTSecurityDescriptor
+            # This is required to read ACLs even with low-privileged accounts
+            sd_flags_control = None
+            try:
+                sd_flags_control = security_descriptor_control(sdflags=0x07)
+            except Exception:
+                logger.debug("Could not create security descriptor control")
+
+            # Get LAPS passwords for computers - now including nTSecurityDescriptor to parse readers
             entries = self.search(
                 self.base_dn,
                 "(objectCategory=computer)",
                 ['name', 'dNSHostName', 'ms-Mcs-AdmPwd', 'ms-Mcs-AdmPwdExpirationTime',
-                 'userAccountControl']
+                 'userAccountControl', 'nTSecurityDescriptor'],
+                controls=sd_flags_control if sd_flags_control else None
             )
 
             # Also get service accounts (user objects ending in $)
@@ -2942,7 +2959,8 @@ class PyADRecon:
                 self.base_dn,
                 "(&(objectCategory=person)(objectClass=user)(sAMAccountName=*$))",
                 ['name', 'sAMAccountName', 'dNSHostName', 'ms-Mcs-AdmPwd', 'ms-Mcs-AdmPwdExpirationTime',
-                 'userAccountControl']
+                 'userAccountControl', 'nTSecurityDescriptor'],
+                controls=sd_flags_control if sd_flags_control else None
             )
             
             # Also get Managed Service Accounts (MSAs)
@@ -2950,7 +2968,8 @@ class PyADRecon:
                 self.base_dn,
                 "(objectClass=msDS-ManagedServiceAccount)",
                 ['name', 'sAMAccountName', 'dNSHostName', 'ms-Mcs-AdmPwd', 'ms-Mcs-AdmPwdExpirationTime',
-                 'userAccountControl']
+                 'userAccountControl', 'nTSecurityDescriptor'],
+                controls=sd_flags_control if sd_flags_control else None
             )
 
             # Combine all result sets
@@ -2980,6 +2999,52 @@ class PyADRecon:
                     sam = get_attr(entry, 'sAMAccountName', '')
                     hostname = sam.rstrip('$') if sam else get_attr(entry, 'name', '')
 
+                # Parse who can read the LAPS password with the attribute GUID
+                laps_readers = self._parse_laps_readers(entry, laps_attr_guid)
+                
+                # Format reader information with details, filtering out well-known high-privilege principals
+                if laps_readers:
+                    # Format: "USERNAME (type) - why" - make usernames prominent
+                    readers_formatted = []
+                    for reader in laps_readers:
+                        principal = reader.get('principal', 'Unknown')
+                        
+                        # Skip well-known high-privilege principals (Domain Admins, Enterprise Admins, etc.)
+                        if self._is_well_known_high_privilege_principal(principal):
+                            continue
+                        
+                        # Extract clean username from principal name
+                        # e.g., "[User] lrvt" -> "lrvt" or "[Group] IT Admins" -> "IT Admins"
+                        if principal.startswith('['):
+                            # Format: [Type] Name
+                            parts = principal.split('] ', 1)
+                            if len(parts) == 2:
+                                principal_type = parts[0].replace('[', '')
+                                clean_name = parts[1]
+                            else:
+                                principal_type = 'Principal'
+                                clean_name = principal
+                        else:
+                            principal_type = 'Principal'
+                            clean_name = principal
+                        
+                        why = reader.get('why', '')
+                        # Simplify the "why" message for readability
+                        if 'Object-specific CONTROL_ACCESS for ms-Mcs-AdmPwd' in why:
+                            simplified_why = 'Explicit LAPS read permission'
+                        elif 'CONTROL_ACCESS on object' in why:
+                            simplified_why = 'General read permission on computer'
+                        elif 'High privilege on computer' in why:
+                            simplified_why = 'High-level access to computer'
+                        else:
+                            simplified_why = why
+                        
+                        readers_formatted.append(f"{clean_name} ({principal_type}) - {simplified_why}")
+                    
+                    readers_str = ", ".join(readers_formatted) if readers_formatted else "Only default admins"
+                else:
+                    readers_str = "" if not laps_attr_guid else "None detected"
+
                 results.append({
                     "Hostname": hostname,
                     "Enabled": uac_parsed.get('Enabled', ''),
@@ -2987,10 +3052,13 @@ class PyADRecon:
                     "Readable": password_readable,
                     "Password": laps_pwd if laps_pwd else "",
                     "Expiration": str(laps_exp_dt) if laps_exp_dt else "",
+                    "Readers": readers_str,
                 })
 
         except Exception as e:
             logger.warning(f"Error collecting LAPS: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
 
         self.results['LAPS'] = results
         logger.info(f"    Found {len(results)} LAPS entries")
@@ -3603,6 +3671,232 @@ class PyADRecon:
         }
         
         return principal_lower in low_priv_names
+    
+    def _is_well_known_high_privilege_principal(self, principal_name: str) -> bool:
+        """Check if a principal is a well-known high-privilege group/user that should be filtered from LAPS readers.
+        Returns True for default admin groups that are expected to have access.
+        """
+        principal_lower = principal_name.lower()
+        
+        # Well-known high-privilege groups and accounts that are expected to have LAPS access
+        well_known_high_priv = {
+            'nt authority\\system',
+            'builtin\\administrators',
+            '[group] domain admins',
+            '[group] enterprise admins',
+            '[group] administrators',
+            'account operators',
+            'backup operators',
+            '[group] account operators',
+            '[group] backup operators',
+            '[group] server operators',
+            'server operators',
+            '[group] domain controllers',
+            'enterprise domain controllers',
+        }
+        
+        return principal_lower in well_known_high_priv
+    
+    def _get_schema_guid(self, attribute_name: str) -> Optional[str]:
+        """Get the schemaIDGUID for a specific attribute.
+        Returns: GUID string in canonical format (e.g., 'a740f3f1-...').
+        """
+        try:
+            entries = self.search(
+                self.schema_dn,
+                f"(name={attribute_name})",
+                ['schemaIDGUID']
+            )
+            
+            if entries and len(entries) > 0:
+                guid_bytes = get_attr(entries[0], 'schemaIDGUID')
+                if guid_bytes and isinstance(guid_bytes, bytes) and len(guid_bytes) == 16:
+                    import uuid
+                    # AD stores schemaIDGUID in little-endian format
+                    guid_str = str(uuid.UUID(bytes_le=guid_bytes)).lower()
+                    logger.debug(f"Schema GUID for {attribute_name}: {guid_str}")
+                    return guid_str
+        except Exception as e:
+            logger.debug(f"Could not get schema GUID for {attribute_name}: {e}")
+        
+        return None
+    
+    def _guid_bytes_to_str(self, guid_bytes: bytes) -> str:
+        """Convert GUID bytes to canonical string format."""
+        import uuid
+        return str(uuid.UUID(bytes_le=guid_bytes)).lower()
+    
+    def _mask_to_rights(self, mask: int) -> list:
+        """Decode access mask to list of right names."""
+        ADS_RIGHT_DS_READ_PROP = 0x00000010
+        ADS_RIGHT_DS_CONTROL_ACCESS = 0x00000100
+        GENERIC_READ = 0x80000000
+        GENERIC_ALL = 0x10000000
+        WRITE_DAC = 0x00040000
+        WRITE_OWNER = 0x00080000
+        
+        rights = []
+        if mask & ADS_RIGHT_DS_READ_PROP:
+            rights.append("READ_PROP")
+        if mask & ADS_RIGHT_DS_CONTROL_ACCESS:
+            rights.append("CONTROL_ACCESS")
+        if mask & GENERIC_READ:
+            rights.append("GENERIC_READ")
+        if mask & GENERIC_ALL:
+            rights.append("GENERIC_ALL")
+        if mask & WRITE_DAC:
+            rights.append("WRITE_DAC")
+        if mask & WRITE_OWNER:
+            rights.append("WRITE_OWNER")
+        return rights
+    
+    def _parse_laps_readers(self, entry, laps_attr_guid: Optional[str] = None) -> list:
+        """Parse nTSecurityDescriptor to get principals with read access to ms-Mcs-AdmPwd attribute.
+        
+        Args:
+            entry: The LDAP entry (computer object)
+            laps_attr_guid: The schemaIDGUID for ms-Mcs-AdmPwd (forest-specific)
+        
+        Returns: list of dicts with principal, SID, rights, and why information.
+        """
+        results = []
+        
+        if not IMPACKET_AVAILABLE:
+            logger.debug("Impacket not available for ACL parsing")
+            return results
+        
+        # Get raw security descriptor bytes
+        sd_data = get_attr(entry, 'nTSecurityDescriptor')
+        if not sd_data or not isinstance(sd_data, (bytes, bytearray)):
+            logger.debug("No security descriptor data found for LAPS reader parsing")
+            return results
+        
+        # If we don't have the LAPS GUID, we can't do proper attribute-specific checks
+        if not laps_attr_guid:
+            logger.debug("No LAPS attribute GUID provided, cannot perform accurate checks")
+            return results
+        
+        try:
+            # Parse the security descriptor using impacket
+            sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=sd_data)
+            
+            # Check if DACL exists
+            if not sd['Dacl']:
+                logger.debug("No DACL in security descriptor")
+                return results
+            
+            # Access right constants
+            ADS_RIGHT_DS_CONTROL_ACCESS = 0x00000100
+            GENERIC_ALL = 0x10000000
+            WRITE_DAC = 0x00040000
+            WRITE_OWNER = 0x00080000
+            
+            # ACE type constants
+            ACCESS_ALLOWED_ACE = 0
+            ACCESS_ALLOWED_OBJECT_ACE = 5
+            ACE_OBJECT_TYPE_PRESENT = 0x1
+            
+            # Track seen principals to avoid duplicates
+            seen = set()
+            
+            # Parse each ACE in the DACL
+            for ace in sd['Dacl'].aces:
+                try:
+                    ace_type = ace['AceType']
+                    ace_body = ace['Ace']
+                    sid = ace_body['Sid'].formatCanonical()
+                    mask = ace_body['Mask']['Mask']
+                    try:
+                        inherited = bool(ace['AceFlags'] & 0x10) if 'AceFlags' in ace.fields else False
+                    except:
+                        inherited = False
+                    
+                    # Quick wins: if someone has GENERIC_ALL / WRITE_DAC / WRITE_OWNER on the computer object,
+                    # they can effectively get the LAPS value (or grant themselves rights)
+                    if mask & (GENERIC_ALL | WRITE_DAC | WRITE_OWNER):
+                        principal = self._resolve_sid_to_name(sid)
+                        key = (principal, sid, "FULL_CONTROL_PATH")
+                        if key not in seen:
+                            seen.add(key)
+                            rights_list = self._mask_to_rights(mask)
+                            results.append({
+                                "principal": principal,
+                                "sid": sid,
+                                "rights": rights_list,
+                                "ace_type": ace_type,
+                                "object_type": None,
+                                "inherited": inherited,
+                                "why": f"High privilege on computer ({', '.join(rights_list)})"
+                            })
+                        continue
+                    
+                    # Standard ACE (applies to whole object)
+                    if ace_type == ACCESS_ALLOWED_ACE:
+                        # For confidential attributes, CONTROL_ACCESS is key
+                        if mask & ADS_RIGHT_DS_CONTROL_ACCESS:
+                            principal = self._resolve_sid_to_name(sid)
+                            key = (principal, sid, "CTRL_ACCESS_ALL")
+                            if key not in seen:
+                                seen.add(key)
+                                rights_list = self._mask_to_rights(mask)
+                                results.append({
+                                    "principal": principal,
+                                    "sid": sid,
+                                    "rights": rights_list,
+                                    "ace_type": ace_type,
+                                    "object_type": None,
+                                    "inherited": inherited,
+                                    "why": "CONTROL_ACCESS on object (confidential attributes readable)"
+                                })
+                    
+                    # Object-specific ACE
+                    elif ace_type == ACCESS_ALLOWED_OBJECT_ACE:
+                        try:
+                            flags = int(ace_body['Flags']) if 'Flags' in ace_body.fields else 0
+                        except:
+                            flags = 0
+                        object_type = None
+                        
+                        # Get the ObjectType GUID if present
+                        if (flags & ACE_OBJECT_TYPE_PRESENT) and ('ObjectType' in ace_body.fields):
+                            try:
+                                ot = ace_body['ObjectType']
+                                if isinstance(ot, bytes) and len(ot) == 16:
+                                    object_type = self._guid_bytes_to_str(ot)
+                                else:
+                                    object_type = str(ot).lower()
+                            except:
+                                pass
+                        
+                        # Only count if ACE is specifically for ms-Mcs-AdmPwd (or if object_type absent -> applies to all)
+                        applies_to_laps = (object_type is None) or (object_type == laps_attr_guid)
+                        
+                        if applies_to_laps and (mask & ADS_RIGHT_DS_CONTROL_ACCESS):
+                            principal = self._resolve_sid_to_name(sid)
+                            key = (principal, sid, object_type, mask)
+                            if key not in seen:
+                                seen.add(key)
+                                rights_list = self._mask_to_rights(mask)
+                                results.append({
+                                    "principal": principal,
+                                    "sid": sid,
+                                    "rights": rights_list,
+                                    "ace_type": ace_type,
+                                    "object_type": object_type,
+                                    "inherited": inherited,
+                                    "why": f"Object-specific CONTROL_ACCESS for ms-Mcs-AdmPwd (GUID={object_type or 'all'})"
+                                })
+                                
+                except Exception as e:
+                    logger.debug(f"Error parsing ACE for LAPS readers: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.debug(f"Error parsing LAPS readers: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            
+        return results
     
     def _resolve_sid_to_name(self, sid: str) -> str:
         """Resolve a SID to a readable name (user/group) with caching."""
