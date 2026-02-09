@@ -36,21 +36,6 @@ pacman -Syu pyadrecon
 
 ## Usage
 
->[!TIP]
->PyADRecon always tries LDAPS on TCP/636 first.
->
->If flag `--ssl` is not used, LDAP on TCP/389 may be tried as fallback.
-
->[!WARNING]
->If LDAP channel binding is enabled, this script will fail with `automatic bind not successful - strongerAuthRequired`, as ldap3 does not support it (see [here](https://github.com/cannatag/ldap3/issues/1049#issuecomment-1222826803)). You must use Kerberos authentication instead.
->
->If you use Kerberos auth, please create a valid `/etc/krb5.conf` and DC hostname entry in `/etc/hosts`. May read [this](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=32628#KerberosClientConfiguration-*NIX/etc/krb5.confConfiguration).
->
->Note that you can provide an already existing TGT ticket to the script via `--tgt-file` or `--tgt-base64`. For example, obtained by Netexec via `netexec smb <TARGET> <ARGS> --generate-tgt <FILEMAME>`.
-
->[!TIP]
->If a user account has `userWorkstations` attribute restrictions (allowed to log in only from specific computers), you can bypass this using the `--workstation` flag. This spoofs the workstation name during NTLM authentication, making the DC believe you're connecting from an allowed machine. Useful for pentesting with low-privilege accounts that have workstation restrictions.
-
 ````py
 usage: pyadrecon.py [-h] [--generate-excel-from CSV_DIR] [-dc DOMAIN_CONTROLLER] [-u USERNAME] [-p [PASSWORD]] [-d DOMAIN] [--auth {ntlm,kerberos}] [--tgt-file TGT_FILE] [--tgt-base64 TGT_BASE64]
                     [--ssl] [--port PORT] [-o OUTPUT] [--page-size PAGE_SIZE] [--threads THREADS] [--dormant-days DORMANT_DAYS] [--password-age PASSWORD_AGE] [--only-enabled] [--collect COLLECT]
@@ -115,6 +100,21 @@ Examples:
   # Generate Excel report from existing CSV files (standalone mode)
   pyadrecon.py --generate-excel-from /path/to/CSV-Files -o report.xlsx
 ````
+
+>[!TIP]
+>PyADRecon always tries LDAPS on TCP/636 first.
+>
+>If flag `--ssl` is not used, LDAP on TCP/389 may be tried as fallback.
+
+>[!WARNING]
+>If LDAP channel binding is enabled, this script will fail with `automatic bind not successful - strongerAuthRequired`, as ldap3 does not support it (see [here](https://github.com/cannatag/ldap3/issues/1049#issuecomment-1222826803)). You must use Kerberos authentication instead.
+>
+>If you use Kerberos auth, please create a valid `/etc/krb5.conf` and DC hostname entry in `/etc/hosts`. May read [this](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=32628#KerberosClientConfiguration-*NIX/etc/krb5.confConfiguration).
+>
+>Note that you can provide an already existing TGT ticket to the script via `--tgt-file` or `--tgt-base64`. For example, obtained by Netexec via `netexec smb <TARGET> <ARGS> --generate-tgt <FILEMAME>`.
+
+>[!WARNING]
+>If a user account has `userWorkstations` attribute restrictions (allowed to log in only from specific computers), you can bypass this using the `--workstation` flag. This spoofs the workstation name during NTLM authentication, making the DC believe you're connecting from an allowed machine. Useful for pentesting with low-privilege accounts that have workstation restrictions.
 
 ## Docker
 
