@@ -846,14 +846,17 @@ class PyADRecon:
                     )
                 else:
                     # NTLM authentication
+                    # Always patch workstation name to match Impacket behavior:
+                    # - Empty string (default) = bypasses userWorkstations restriction
+                    # - Specific name = spoofs that workstation
+                    import socket
+                    original_gethostname = socket.gethostname
+                    socket.gethostname = lambda: self.config.workstation
+                    
                     if self.config.workstation:
                         logger.info(f"Using NTLM authentication with workstation spoofing: {self.config.workstation}")
-                        # Monkey-patch the workstation name for ntlm-auth
-                        import socket
-                        original_gethostname = socket.gethostname
-                        socket.gethostname = lambda: self.config.workstation
                     else:
-                        logger.info("Using NTLM authentication...")
+                        logger.info("Using NTLM authentication with empty workstation name (bypasses userWorkstations restriction)")
                     
                     user = self.config.username
                     if '\\' not in user and '@' not in user:
@@ -870,10 +873,8 @@ class PyADRecon:
                             auto_referrals=False
                         )
                     finally:
-                        # Restore original gethostname if we patched it
-                        if self.config.workstation:
-                            import socket
-                            socket.gethostname = original_gethostname
+                        # Restore original gethostname
+                        socket.gethostname = original_gethostname
 
                 if self.conn.bound:
                     logger.info(f"Successfully connected via {protocol} on port {port}")
