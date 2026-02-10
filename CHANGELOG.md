@@ -1,3 +1,11 @@
+## [0.10.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.10.1...v0.10.2) (2026-02-10)
+
+
+### Bug Fixes
+
+* improve password policy parsing and display as (d h m s) ([9161f8c](https://github.com/l4rm4nd/PyADRecon/commit/9161f8c925c768a301578575f7152fc7985b4cd2)), closes [#4](https://github.com/l4rm4nd/PyADRecon/issues/4)
+* use empty workstation name instead of spoofing ([1a3db5b](https://github.com/l4rm4nd/PyADRecon/commit/1a3db5b627d1f40b81d3511164e76d052583513a))
+
 ## [0.10.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.10.0...v0.10.1) (2026-02-09)
 
 
@@ -30,11 +38,4 @@
 ### Bug Fixes
 
 * parsing and risk analysis for adcs ([17cbeb4](https://github.com/l4rm4nd/PyADRecon/commit/17cbeb419a71df5bc74b746a6792379850cc537f))
-
-## [0.8.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.7.2...v0.8.0) (2026-02-09)
-
-
-### Features
-
-* add dMSA; fixes [#3](https://github.com/l4rm4nd/PyADRecon/issues/3) ([6490aa8](https://github.com/l4rm4nd/PyADRecon/commit/6490aa8d7b7b46b6fa345c9d52628930f28d39e4))
 
