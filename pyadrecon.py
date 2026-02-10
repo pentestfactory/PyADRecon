@@ -1562,67 +1562,35 @@ class PyADRecon:
                 lockout_duration = get_attr(entry, 'lockoutDuration')
                 lockout_window = get_attr(entry, 'lockoutObservationWindow')
 
-                def convert_interval_to_days(interval):
-                    """Convert AD time interval to days (handles both timedelta and raw values)."""
+                def format_interval(interval, unit='days'):
+                    """
+                    Format AD time interval as days, hours, minutes, seconds (supports fractional values).
+                    - For maxPwdAge, minPwdAge, lockoutDuration, lockoutObservationWindow: expects 100-nanosecond intervals (usually negative).
+                    - For 0 or None, returns '0d 0h 0m 0s'.
+                    """
                     if interval is None:
-                        return "Not Set"
+                        return '0d 0h 0m 0s'
                     try:
-                        # ldap3 returns timedelta objects for these attributes
                         if isinstance(interval, timedelta):
-                            days = abs(interval.days)
-                            return days
-                        
-                        # Fallback for raw integer values (100-nanosecond units)
-                        if isinstance(interval, str):
-                            interval_val = int(interval)
+                            total_seconds = abs(interval.total_seconds())
                         else:
                             interval_val = int(interval)
-                        
-                        # Check for 0 - this means never expires or not set
-                        if interval_val == 0:
-                            return "Not Set"
-                        
-                        # Positive values don't make sense for AD time intervals
-                        if interval_val > 0:
-                            return "Not Set"
-                        
-                        # AD stores as negative value in 100-nanosecond intervals
-                        days = abs(interval_val) / (10000000 * 60 * 60 * 24)
-                        return int(round(days))
-                    except Exception as e:
-                        logger.debug(f"Error converting interval to days: {interval}, error: {e}")
-                        return "Not Set"
-
-                def convert_interval_to_minutes(interval):
-                    """Convert AD time interval to minutes (handles both timedelta and raw values)."""
-                    if interval is None:
-                        return "Not Set"
-                    try:
-                        # ldap3 returns timedelta objects for these attributes
-                        if isinstance(interval, timedelta):
-                            minutes = int(abs(interval.total_seconds()) / 60)
-                            return minutes
-                        
-                        # Fallback for raw integer values (100-nanosecond units)
-                        if isinstance(interval, str):
-                            interval_val = int(interval)
+                            total_seconds = abs(interval_val) / 10000000
+                        days = int(total_seconds // 86400)
+                        hours = int((total_seconds % 86400) // 3600)
+                        minutes = int((total_seconds % 3600) // 60)
+                        seconds = int(total_seconds % 60)
+                        if unit == 'days':
+                            # Show as 'Xd Yh Zm Ws' for clarity
+                            return f"{days}d {hours}h {minutes}m {seconds}s"
+                        elif unit == 'minutes':
+                            total_minutes = int(round(total_seconds / 60))
+                            return f"{total_minutes}"
                         else:
-                            interval_val = int(interval)
-                        
-                        # Check for 0 - this means administrator must manually unlock
-                        if interval_val == 0:
-                            return 0
-                        
-                        # Positive values don't make sense for AD time intervals
-                        if interval_val > 0:
-                            return "Not Set"
-                        
-                        # AD stores as negative value in 100-nanosecond intervals
-                        minutes = abs(interval_val) / (10000000 * 60)
-                        return int(round(minutes))
+                            return str(total_seconds)
                     except Exception as e:
-                        logger.debug(f"Error converting interval to minutes: {interval}, error: {e}")
-                        return "Not Set"
+                        logger.debug(f"Error formatting interval: {interval}, error: {e}")
+                        return '0d 0h 0m 0s'
 
                 pwd_props = get_attr(entry, 'pwdProperties', 0)
                 pwd_props = safe_int(pwd_props)
@@ -1631,29 +1599,29 @@ class PyADRecon:
                 results.append({
                     "Policy": "Enforce password history (passwords)",
                     "Current Value": str(get_attr(entry, 'pwdHistoryLength', '')),
-                    "CIS Benchmark 2024-25": "24 or more",
+                    "CIS Benchmark 2024-25": "24 or more passwords",
                     "PCI DSS v4.0.1": "4",
                     "PCI DSS Requirement": "Req. 8.3.7"
                 })
                 results.append({
-                    "Policy": "Maximum password age (days)",
-                    "Current Value": convert_interval_to_days(max_pwd_age),
-                    "CIS Benchmark 2024-25": "1 to 365",
-                    "PCI DSS v4.0.1": "90",
+                    "Policy": "Maximum password age (d h m s)",
+                    "Current Value": format_interval(max_pwd_age, unit='days'),
+                    "CIS Benchmark 2024-25": "1 to 365 days",
+                    "PCI DSS v4.0.1": "90 days",
                     "PCI DSS Requirement": "Req. 8.3.9"
                 })
                 results.append({
-                    "Policy": "Minimum password age (days)",
-                    "Current Value": convert_interval_to_days(min_pwd_age),
-                    "CIS Benchmark 2024-25": "1 or more",
+                    "Policy": "Minimum password age (d h m s)",
+                    "Current Value": format_interval(min_pwd_age, unit='days'),
+                    "CIS Benchmark 2024-25": "1 or more days",
                     "PCI DSS v4.0.1": "N/A",
                     "PCI DSS Requirement": "-"
                 })
                 results.append({
                     "Policy": "Minimum password length (characters)",
                     "Current Value": str(get_attr(entry, 'minPwdLength', '')),
-                    "CIS Benchmark 2024-25": "14 or more",
-                    "PCI DSS v4.0.1": "12",
+                    "CIS Benchmark 2024-25": "14 or more chars",
+                    "PCI DSS v4.0.1": "12 chars",
                     "PCI DSS Requirement": "Req. 8.3.6"
                 })
                 results.append({
@@ -1671,23 +1639,23 @@ class PyADRecon:
                     "PCI DSS Requirement": "-"
                 })
                 results.append({
-                    "Policy": "Account lockout duration (mins)",
-                    "Current Value": convert_interval_to_minutes(lockout_duration),
-                    "CIS Benchmark 2024-25": "15 or more",
-                    "PCI DSS v4.0.1": "0 (manual unlock) or 30",
+                    "Policy": "Account lockout duration (d h m s)",
+                    "Current Value": format_interval(lockout_duration, unit='days'),
+                    "CIS Benchmark 2024-25": "15 mins or more",
+                    "PCI DSS v4.0.1": "0 (manual unlock) or 30 mins",
                     "PCI DSS Requirement": "Req. 8.3.4"
                 })
                 results.append({
                     "Policy": "Account lockout threshold (attempts)",
                     "Current Value": str(get_attr(entry, 'lockoutThreshold', '')),
-                    "CIS Benchmark 2024-25": "1 to 5",
-                    "PCI DSS v4.0.1": "1 to 10",
+                    "CIS Benchmark 2024-25": "1 to 5 attempts",
+                    "PCI DSS v4.0.1": "1 to 10 attempts",
                     "PCI DSS Requirement": "Req. 8.3.4"
                 })
                 results.append({
                     "Policy": "Reset account lockout counter after (mins)",
-                    "Current Value": convert_interval_to_minutes(lockout_window),
-                    "CIS Benchmark 2024-25": "15 or more",
+                    "Current Value": format_interval(lockout_window, unit='minutes'),
+                    "CIS Benchmark 2024-25": "15 or more mins",
                     "PCI DSS v4.0.1": "N/A",
                     "PCI DSS Requirement": "-"
                 })
@@ -4648,95 +4616,94 @@ class PyADRecon:
             if ws.max_row > 1:  # Has data beyond header
                 # Find column indices
                 headers = {cell.value: cell.column for cell in ws[1]}
-                
+                import re
+                def parse_interval_to_days(interval_str):
+                    # Parse 'Xd Yh Zm Ws' to total days (float)
+                    if not interval_str or not isinstance(interval_str, str):
+                        return None
+                    pattern = r"(?:(\d+(?:\.\d+)?)d)?\s*(?:(\d+(?:\.\d+)?)h)?\s*(?:(\d+(?:\.\d+)?)m)?\s*(?:(\d+(?:\.\d+)?)s)?"
+                    match = re.match(pattern, interval_str.strip())
+                    if not match:
+                        return None
+                    days, hours, mins, secs = match.groups(default="0")
+                    try:
+                        total_days = float(days) + float(hours)/24 + float(mins)/1440 + float(secs)/86400
+                        return total_days
+                    except Exception:
+                        return None
+                def parse_interval_to_minutes(interval_str):
+                    # Parse 'Xd Yh Zm Ws' to total minutes (float)
+                    if not interval_str or not isinstance(interval_str, str):
+                        return None
+                    pattern = r"(?:(\d+(?:\.\d+)?)d)?\s*(?:(\d+(?:\.\d+)?)h)?\s*(?:(\d+(?:\.\d+)?)m)?\s*(?:(\d+(?:\.\d+)?)s)?"
+                    match = re.match(pattern, interval_str.strip())
+                    if not match:
+                        return None
+                    days, hours, mins, secs = match.groups(default="0")
+                    try:
+                        total_minutes = float(days)*1440 + float(hours)*60 + float(mins) + float(secs)/60
+                        return total_minutes
+                    except Exception:
+                        return None
                 if "Current Value" in headers and "CIS Benchmark 2024-25" in headers:
                     current_col = headers["Current Value"]
                     cis_col = headers["CIS Benchmark 2024-25"]
                     policy_col = headers["Policy"]
-                    
                     # Apply formatting to data rows (skip header)
                     for row_idx in range(2, ws.max_row + 1):
                         policy = ws.cell(row=row_idx, column=policy_col).value
                         current_val = ws.cell(row=row_idx, column=current_col).value
                         cis_val = ws.cell(row=row_idx, column=cis_col).value
-                        
-                        # Convert to comparable types
                         try:
                             current_val_str = str(current_val).strip()
                             cis_val_str = str(cis_val).strip()
-                            
-                            # Determine if current value meets CIS recommendation
                             non_compliant = False
-                            
                             if "Enforce password history" in str(policy):
-                                # CIS: 24 or more, check if current >= 24
+                                # CIS: 24 or more
                                 if current_val_str.isdigit() and int(current_val_str) < 24:
                                     non_compliant = True
-                            
                             elif "Maximum password age" in str(policy):
-                                # CIS: 1 to 365, check if in range
-                                if current_val_str.isdigit():
-                                    val = int(current_val_str)
-                                    if val < 1 or val > 365:
-                                        non_compliant = True
-                                elif current_val_str == "Not Set":
+                                # CIS: 1 to 365 days
+                                days = parse_interval_to_days(current_val_str)
+                                if days is None or days < 1 or days > 365:
                                     non_compliant = True
-                            
                             elif "Minimum password age" in str(policy):
-                                # CIS: 1 or more
-                                if current_val_str.isdigit() and int(current_val_str) < 1:
+                                # CIS: 1 or more days
+                                days = parse_interval_to_days(current_val_str)
+                                if days is None or days < 1:
                                     non_compliant = True
-                                elif current_val_str == "Not Set":
-                                    non_compliant = True
-                            
                             elif "Minimum password length" in str(policy):
-                                # CIS: 14 or more
                                 if current_val_str.isdigit() and int(current_val_str) < 14:
                                     non_compliant = True
-                            
                             elif "complexity requirements" in str(policy):
-                                # CIS: TRUE
                                 if current_val_str.upper() != "TRUE":
                                     non_compliant = True
-                            
                             elif "reversible encryption" in str(policy):
-                                # CIS: FALSE
                                 if current_val_str.upper() != "FALSE":
                                     non_compliant = True
-                            
                             elif "Account lockout duration" in str(policy):
-                                # CIS: 15 or more (0 is also acceptable for manual unlock)
-                                if current_val_str.isdigit():
-                                    val = int(current_val_str)
-                                    if val != 0 and val < 15:
-                                        non_compliant = True
-                                elif current_val_str == "Not Set":
+                                # CIS: 15 or more days (0 is also acceptable for manual unlock)
+                                days = parse_interval_to_days(current_val_str)
+                                if days is None or (days != 0 and days < 15):
                                     non_compliant = True
-                            
                             elif "Account lockout threshold" in str(policy):
-                                # CIS: 1 to 5
                                 if current_val_str.isdigit():
                                     val = int(current_val_str)
                                     if val < 1 or val > 5:
                                         non_compliant = True
                                 elif current_val_str == "Not Set" or current_val_str == "0":
                                     non_compliant = True
-                            
                             elif "Reset account lockout counter" in str(policy):
-                                # CIS: 15 or more
-                                if current_val_str.isdigit() and int(current_val_str) < 15:
+                                # CIS: 15 or more minutes
+                                mins = parse_interval_to_minutes(current_val_str)
+                                if mins is None or mins < 15:
                                     non_compliant = True
-                                elif current_val_str == "Not Set":
-                                    non_compliant = True
-                            
                             # Highlight the Current Value cell - orange for non-compliant, green for compliant
                             if non_compliant:
                                 ws.cell(row=row_idx, column=current_col).fill = orange_fill
                             else:
-                                # Green for compliant
                                 green_fill = PatternFill(start_color="B3FFB3", end_color="B3FFB3", fill_type="solid")
                                 ws.cell(row=row_idx, column=current_col).fill = green_fill
-                        
                         except Exception as e:
                             logger.debug(f"Error comparing password policy values: {e}")
         
