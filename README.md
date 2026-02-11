@@ -145,6 +145,10 @@ Though, you can freely select your own collection of modules to run:
 - `userspns`
 - `groups`
 - `groupmembers`
+- `protectedgroups`
+- `krbtgt`
+- `asreproastable`
+- `kerberoastable`
 
 **Computers & Printers**
 - `computers`
