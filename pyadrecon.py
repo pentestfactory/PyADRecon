@@ -339,15 +339,28 @@ def parse_uac(uac) -> Dict[str, bool]:
     return result
 
 
-def parse_kerb_enc_types(enc_types) -> Dict[str, bool]:
-    """Parse msDS-SupportedEncryptionTypes into individual encryption types."""
-    if enc_types is None:
-        return {}
+def parse_kerb_enc_types(enc_types) -> Dict[str, str]:
+    """Parse msDS-SupportedEncryptionTypes into individual encryption types.
+    
+    If msDS-SupportedEncryptionTypes is not set (None/0), the DC uses defaults:
+    - Windows Server 2008+: RC4, AES128, AES256 (all supported)
+    - Older versions: RC4, DES (deprecated)
+    
+    Returns dict with 'Supported', 'Not Supported', or 'Default' for each type.
+    """
+    if enc_types is None or safe_int(enc_types, 0) == 0:
+        # Attribute not set - system uses defaults (typically all modern algorithms)
+        return {
+            'RC4': 'Default',
+            'AES128': 'Default',
+            'AES256': 'Default',
+        }
+    
     enc_types = safe_int(enc_types, 0)
     return {
-        'RC4': bool(enc_types & 0x04),
-        'AES128': bool(enc_types & 0x08),
-        'AES256': bool(enc_types & 0x10),
+        'RC4': 'Supported' if (enc_types & 0x04) else 'Not Supported',
+        'AES128': 'Supported' if (enc_types & 0x08) else 'Not Supported',
+        'AES256': 'Supported' if (enc_types & 0x10) else 'Not Supported',
     }
 
 
@@ -704,6 +717,10 @@ class ADReconConfig:
     collect_gmsa: bool = True
     collect_dmsa: bool = True
     collect_adcs: bool = True
+    collect_protected_groups: bool = True
+    collect_krbtgt: bool = True
+    collect_asrep_roastable: bool = True
+    collect_kerberoastable: bool = True
 
 
 class PyADRecon:
@@ -1011,6 +1028,64 @@ class PyADRecon:
 
         return entries
 
+    def _get_computer_add_rights(self, domain_entry, maq_value: int) -> str:
+        """Determine who can add computers to the domain.
+        
+        Computer addition requires BOTH:
+        1. SeMachineAccountPrivilege (stored in DC Group Policy, default: Authenticated Users)
+        2. ms-DS-MachineAccountQuota > 0 (defines how many, default: 10)
+        
+        Note: SeMachineAccountPrivilege is in the domain controller policy and cannot
+        be reliably queried via LDAP. This function only analyzes explicit ACLs on the
+        domain object. By DEFAULT (unless changed), Authenticated Users has this privilege.
+        """
+        if not IMPACKET_AVAILABLE:
+            return f"Check DC policy for SeMachineAccountPrivilege (default: Authenticated Users, MAQ={maq_value})"
+        
+        try:
+            principals = set()
+            
+            # Parse domain ACL for explicit computer creation rights
+            sd_data = get_attr(domain_entry, 'nTSecurityDescriptor')
+            if sd_data and isinstance(sd_data, (bytes, bytearray)):
+                sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=sd_data)
+                if sd['Dacl']:
+                    # Computer class GUID: bf967a86-0de6-11d0-a285-00aa003049e2
+                    computer_guid = "bf967a86-0de6-11d0-a285-00aa003049e2"
+                    
+                    for ace in sd['Dacl']['Data']:
+                        # Check ACCESS_ALLOWED_OBJECT_ACE (type 5) and ACCESS_ALLOWED_ACE (type 0)
+                        if ace['AceType'] in [0, 5]:
+                            sid = ace['Ace']['Sid'].formatCanonical()
+                            mask = ace['Ace']['Mask']['Mask']
+                            
+                            # Check for CreateChild (0x00000001) or GenericAll (0x10000000)
+                            if mask & 0x00000001 or mask & 0x10000000:
+                                # For object ACEs, check if it's for computer objects
+                                if ace['AceType'] == 5:
+                                    if 'ObjectType' in ace['Ace'] and ace['Ace']['ObjectType']:
+                                        obj_type = str(ace['Ace']['ObjectType']).lower()
+                                        if computer_guid in obj_type:
+                                            principal_name = self._resolve_sid_to_name(sid)
+                                            principals.add(principal_name)
+                                # For standard ACEs, include all CreateChild permissions
+                                else:
+                                    principal_name = self._resolve_sid_to_name(sid)
+                                    principals.add(principal_name)
+            
+            # Build result message
+            acl_info = "; ".join(sorted(principals)) if principals else "No explicit ACL entries"
+            
+            # Add context about SeMachineAccountPrivilege
+            if maq_value > 0:
+                return f"Check DC policy for SeMachineAccountPrivilege (default: Authenticated Users, MAQ={maq_value}). ACL: {acl_info}"
+            else:
+                return f"MAQ=0 blocks non-admin joins. ACL: {acl_info}"
+            
+        except Exception as e:
+            logger.debug(f"Error parsing computer add rights: {e}")
+            return "Unknown"
+
     def collect_domain_info(self) -> List[Dict]:
         """Collect domain information."""
         logger.info("[-] Collecting Domain Information...")
@@ -1022,7 +1097,7 @@ class PyADRecon:
             entries = self.search(
                 self.base_dn,
                 "(objectCategory=domainDNS)",
-                ['*']
+                ['*', 'nTSecurityDescriptor']
             )
 
             if entries:
@@ -1041,7 +1116,10 @@ class PyADRecon:
                 results.append({"Category": "Functional Level", "Value": f"{func_level}Domain"})
                 results.append({"Category": "DomainSID", "Value": self.domain_sid})
                 results.append({"Category": "Creation Date", "Value": format_datetime(get_attr(entry, 'whenCreated'))})
-                results.append({"Category": "ms-DS-MachineAccountQuota", "Value": str(get_attr(entry, 'ms-DS-MachineAccountQuota', ''))})
+                
+                # Machine Account Quota - how many computers each user can add
+                maq = get_attr(entry, 'ms-DS-MachineAccountQuota', '10')
+                results.append({"Category": "ms-DS-MachineAccountQuota", "Value": str(maq)})
 
                 # Get RID info
                 rid_entries = self.search(
@@ -1836,9 +1914,9 @@ class PyADRecon:
                     "Smartcard Logon Required": uac_parsed.get('SmartcardRequired', False),
                     "Delegation Permitted": not uac_parsed.get('NotDelegated', False),
                     "Kerberos DES Only": uac_parsed.get('UseDESKeyOnly', False),
-                    "Kerberos RC4": kerb_enc.get('RC4', '') if kerb_enc.get('RC4') else '',
-                    "Kerberos AES-128bit": kerb_enc.get('AES128', '') if kerb_enc.get('AES128') else '',
-                    "Kerberos AES-256bit": kerb_enc.get('AES256', '') if kerb_enc.get('AES256') else '',
+                    "Kerberos RC4": kerb_enc.get('RC4', 'Not Set'),
+                    "Kerberos AES-128bit": kerb_enc.get('AES128', 'Not Set'),
+                    "Kerberos AES-256bit": kerb_enc.get('AES256', 'Not Set'),
                     "Does Not Require Pre Auth": uac_parsed.get('DoesNotRequirePreAuth', False),
                     "Never Logged in": never_logged_in,
                     "Logon Age (days)": logon_age_days if logon_age_days is not None else "",
@@ -1906,7 +1984,7 @@ class PyADRecon:
             entries = self.search(
                 self.base_dn,
                 filter_str,
-                ['sAMAccountName', 'name', 'description', 'memberOf',
+                ['sAMAccountName', 'name', 'description', 'info', 'memberOf',
                  'servicePrincipalName', 'primaryGroupID', 'pwdLastSet', 'userAccountControl']
             )
 
@@ -1943,6 +2021,7 @@ class PyADRecon:
                         "Host": host,
                         "Password Last Set": format_datetime(pwd_last_set_dt),
                         "Description": get_attr(entry, 'description', ''),
+                        "Info": get_attr(entry, 'info', ''),
                         "Primary GroupID": get_attr(entry, 'primaryGroupID', ''),
                         "Memberof": ", ".join(groups),
                     })
@@ -4229,6 +4308,508 @@ class PyADRecon:
         logger.info(f"    Found {len(results)} certificate authorities")
         return results
 
+    def collect_protected_groups(self) -> List[Dict]:
+        """Collect protected groups and AdminSDHolder information."""
+        logger.info("[-] Collecting Protected Groups & AdminSDHolder...")
+        results = []
+
+        try:
+            # Well-known protected groups (these inherit from AdminSDHolder)
+            protected_groups = [
+                'Account Operators',
+                'Administrators',
+                'Backup Operators',
+                'Domain Admins',
+                'Domain Controllers',
+                'Enterprise Admins',
+                'Print Operators',
+                'Read-only Domain Controllers',
+                'Replicator',
+                'Schema Admins',
+                'Server Operators',
+                'Key Admins',
+                'Enterprise Key Admins',
+                'Cert Publishers',
+                'DnsAdmins',
+                'Group Policy Creator Owners',
+                'Incoming Forest Trust Builders',
+                'Network Configuration Operators',
+                'Windows Authorization Access Group',
+                'Terminal Server License Servers',
+                'RAS and IAS Servers',
+                'Allowed RODC Password Replication Group',
+                'Denied RODC Password Replication Group',
+                'Cloneable Domain Controllers',
+                'Protected Users',
+                'Cryptographic Operators'
+            ]
+            
+            # Well-known built-in accounts that have adminCount=1 by design
+            builtin_accounts = [
+                'krbtgt',
+                'Administrator'
+            ]
+            
+            # Service accounts that should NOT be in Protected Users (incompatible)
+            service_accounts_exclusions = [
+                'krbtgt'
+            ]
+            
+            # Highly privileged groups that should be in Protected Users group
+            highly_privileged_groups = [
+                'Domain Admins',
+                'Enterprise Admins',
+                'Schema Admins',
+                'Administrators'
+            ]
+            
+            # First, get all users/groups with adminCount=1
+            entries = self.search(
+                self.base_dn,
+                "(&(adminCount=1)(|(objectCategory=person)(objectCategory=group)))",
+                ['sAMAccountName', 'name', 'objectCategory', 'distinguishedName', 
+                 'memberOf', 'objectSid', 'whenChanged', 'lastLogonTimestamp']
+            )
+            
+            for entry in entries:
+                obj_category = str(get_attr(entry, 'objectCategory', '')).lower()
+                is_user = 'person' in obj_category
+                obj_type = "User" if is_user else "Group"
+                
+                sam_account = get_attr(entry, 'sAMAccountName', '')
+                
+                # Check if this is the built-in Administrator account (RID 500)
+                is_builtin_administrator = False
+                obj_sid = get_attr(entry, 'objectSid')
+                if obj_sid:
+                    sid_str = sid_to_string(obj_sid)
+                    # Built-in Administrator always has RID 500 (ends with -500)
+                    if sid_str and sid_str.endswith('-500'):
+                        is_builtin_administrator = True
+                name = get_attr(entry, 'name', '')
+                member_of = get_attr_list(entry, 'memberOf')
+                
+                # Check if this GROUP object IS one of the protected groups
+                is_protected_group_object = not is_user and name in protected_groups
+                
+                # Check if this is a built-in account (like krbtgt)
+                is_builtin_account = is_user and sam_account.lower() in [a.lower() for a in builtin_accounts]
+                is_service_account_exclusion = is_user and sam_account.lower() in [a.lower() for a in service_accounts_exclusions]
+                
+                # Check if this account is in a protected group (for users)
+                in_protected_group = False
+                protected_group_membership = []
+                in_highly_privileged_group = False
+                in_protected_users_group = False
+                
+                if is_user:
+                    # For users, check their group memberships
+                    for group_dn in member_of:
+                        # Extract CN from DN
+                        match = re.search(r'CN=([^,]+)', str(group_dn))
+                        if match:
+                            group_name = match.group(1)
+                            if group_name in protected_groups:
+                                in_protected_group = True
+                                protected_group_membership.append(group_name)
+                            if group_name in highly_privileged_groups:
+                                in_highly_privileged_group = True
+                            if group_name == 'Protected Users':
+                                in_protected_users_group = True
+                
+                # Determine status
+                if is_protected_group_object:
+                    # This IS a protected group object itself
+                    status = "Protected Group (Built-in)"
+                elif is_builtin_account:
+                    # Built-in account like krbtgt
+                    status = "Built-in Account"
+                elif is_user and in_protected_group:
+                    # User is member of protected groups
+                    status = "Active (Member of Protected Groups)"
+                elif is_user and not in_protected_group:
+                    # User has adminCount=1 but not in protected groups (orphaned)
+                    status = "Orphaned (AdminCount=1 but not in protected group)"
+                else:
+                    # Group that is not a protected group but has adminCount=1
+                    status = "Non-Standard Group with AdminCount=1"
+                
+                # Check if highly privileged but NOT in Protected Users group (security risk)
+                risk_level = "Low"
+                recommendations = []
+                
+                if is_protected_group_object:
+                    # Built-in protected groups are normal, no risk
+                    risk_level = "Low"
+                    recommendations.append("Built-in AD object (normal)")
+                elif is_service_account_exclusion:
+                    # Service accounts like krbtgt that can't be in Protected Users
+                    risk_level = "Low"
+                    recommendations.append("Service account - Protected Users group not applicable")
+                elif is_builtin_administrator:
+                    # Built-in Administrator account (RID 500) - special case for emergency access
+                    if not in_protected_users_group:
+                        risk_level = "Medium"
+                        recommendations.append("Built-in Administrator account - Consider Protected Users group only if emergency access doesn't require NTLM/RC4")
+                    else:
+                        risk_level = "Low"
+                        recommendations.append("Built-in Administrator account properly protected")
+                elif is_builtin_account:
+                    # Other built-in accounts that aren't Administrator or service accounts
+                    if not in_protected_users_group:
+                        risk_level = "Medium"
+                        recommendations.append("Built-in account - Consider Protected Users group")
+                    else:
+                        risk_level = "Low"
+                        recommendations.append("Built-in account properly protected")
+                elif is_user and (in_highly_privileged_group or in_protected_group):
+                    # User is in privileged groups
+                    if not in_protected_users_group:
+                        risk_level = "HIGH"
+                        recommendations.append("Highly privileged user should be in 'Protected Users' group for additional security")
+                elif is_user and not in_protected_group:
+                    # User has adminCount=1 but not in protected groups (orphaned)
+                    risk_level = "Medium"
+                    recommendations.append("Orphaned AdminSDHolder - may indicate past privilege or misconfiguration")
+                elif not is_user and not is_protected_group_object:
+                    # Non-standard group with adminCount=1
+                    risk_level = "Medium"
+                    recommendations.append("Non-standard group with AdminCount=1 - review membership and purpose")
+                
+                # Get last logon (only for users, not groups)
+                last_logon_str = "N/A"
+                if is_user:
+                    last_logon = get_attr(entry, 'lastLogonTimestamp')
+                    if last_logon and isinstance(last_logon, datetime) and last_logon.year != 1601:
+                        last_logon_str = format_datetime(last_logon)
+                    else:
+                        last_logon_str = "Never"
+                
+                results.append({
+                    "Name": name,
+                    "SAM Account Name": sam_account,
+                    "Type": obj_type,
+                    "Status": status,
+                    "Last Logon": last_logon_str,
+                    "In Protected Users Group": "Yes" if in_protected_users_group else "No",
+                    "Risk Level": risk_level,
+                    "Recommendations": "; ".join(recommendations) if recommendations else "None",
+                    "Protected Group Membership": "; ".join(protected_group_membership) if protected_group_membership else "None",
+                    "SID": sid_to_string(get_attr(entry, 'objectSid')),
+                    "Last Modified": format_datetime(get_attr(entry, 'whenChanged')),
+                    "Distinguished Name": get_attr(entry, 'distinguishedName', ''),
+                })
+
+        except Exception as e:
+            logger.warning(f"Error collecting protected groups: {e}")
+            logger.debug(f"Exception details: ", exc_info=True)
+
+        self.results['ProtectedGroups'] = results
+        logger.info(f"    Found {len(results)} accounts with AdminCount=1")
+        return results
+
+    def collect_krbtgt(self) -> List[Dict]:
+        """Collect krbtgt account information."""
+        logger.info("[-] Collecting krbtgt Account Information...")
+        results = []
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        try:
+            # Find krbtgt account
+            entries = self.search(
+                self.base_dn,
+                "(&(objectCategory=person)(objectClass=user)(sAMAccountName=krbtgt))",
+                ['sAMAccountName', 'name', 'distinguishedName', 'pwdLastSet',
+                 'msDS-SupportedEncryptionTypes', 'userAccountControl', 'whenCreated',
+                 'whenChanged', 'objectSid', 'description']
+            )
+
+            if entries:
+                entry = entries[0]
+                
+                # Password age
+                pwd_last_set = get_attr(entry, 'pwdLastSet')
+                pwd_age_days = None
+                pwd_last_set_dt = None
+                
+                if isinstance(pwd_last_set, datetime):
+                    if pwd_last_set.year != 1601:
+                        pwd_last_set_dt = pwd_last_set
+                        pwd_last_set_utc = pwd_last_set.replace(tzinfo=None) if pwd_last_set.tzinfo else pwd_last_set
+                        pwd_age_days = (now - pwd_last_set_utc).days
+                
+                # Kerberos encryption types
+                enc_types = get_attr(entry, 'msDS-SupportedEncryptionTypes')
+                kerb_enc = parse_kerb_enc_types(enc_types)
+                
+                # Determine risk level based on password age
+                risk_level = "Low"
+                risk_factors = []
+                
+                if pwd_age_days:
+                    if pwd_age_days > 365:
+                        risk_level = "CRITICAL"
+                        risk_factors.append(f"krbtgt password not changed in {pwd_age_days} days (Golden Ticket risk)")
+                    elif pwd_age_days > 180:
+                        risk_level = "HIGH"
+                        risk_factors.append(f"krbtgt password should be changed (last changed {pwd_age_days} days ago)")
+                    else:
+                        risk_factors.append(f"Password changed {pwd_age_days} days ago (acceptable)")
+                
+                # Check encryption types
+                rc4_val = kerb_enc.get('RC4', 'Not Set')
+                aes256_val = kerb_enc.get('AES256', 'Not Set')
+                if rc4_val in ['Supported', 'Default'] and aes256_val not in ['Supported', 'Default']:
+                    risk_factors.append("Using weak RC4 encryption (AES256 recommended)")
+                    if risk_level == "Low":
+                        risk_level = "Medium"
+                
+                results.append({
+                    "Account Name": get_attr(entry, 'sAMAccountName', ''),
+                    "Distinguished Name": get_attr(entry, 'distinguishedName', ''),
+                    "Password Last Set": format_datetime(pwd_last_set_dt) if pwd_last_set_dt else "Never",
+                    "Password Age (days)": pwd_age_days if pwd_age_days is not None else "Unknown",
+                    "Risk Level": risk_level,
+                    "Risk Factors": "; ".join(risk_factors) if risk_factors else "None",
+                    "Kerberos RC4": kerb_enc.get('RC4', 'Not Set'),
+                    "Kerberos AES-128": kerb_enc.get('AES128', 'Not Set'),
+                    "Kerberos AES-256": kerb_enc.get('AES256', 'Not Set'),
+                    "SID": sid_to_string(get_attr(entry, 'objectSid')),
+                    "Created": format_datetime(get_attr(entry, 'whenCreated')),
+                    "Last Modified": format_datetime(get_attr(entry, 'whenChanged')),
+                    "Description": get_attr(entry, 'description', ''),
+                })
+            else:
+                logger.warning("krbtgt account not found!")
+
+        except Exception as e:
+            logger.warning(f"Error collecting krbtgt account: {e}")
+            logger.debug(f"Exception details: ", exc_info=True)
+
+        self.results['krbtgt'] = results
+        logger.info(f"    Found {len(results)} krbtgt accounts")
+        return results
+
+    def collect_asrep_roastable(self) -> List[Dict]:
+        """Collect accounts vulnerable to AS-REP Roasting (no Kerberos pre-authentication required)."""
+        logger.info("[-] Collecting AS-REP Roastable Accounts...")
+        results = []
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        try:
+            # Find accounts with DONT_REQ_PREAUTH flag set (0x400000)
+            filter_str = "(&(objectCategory=person)(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=4194304))"
+            if self.config.only_enabled:
+                filter_str = "(&(objectCategory=person)(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=4194304)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
+
+            entries = self.search(
+                self.base_dn,
+                filter_str,
+                ['sAMAccountName', 'name', 'distinguishedName', 'userAccountControl',
+                 'pwdLastSet', 'lastLogonTimestamp', 'adminCount', 'memberOf',
+                 'servicePrincipalName', 'objectSid', 'description', 'info', 'whenCreated']
+            )
+
+            for entry in entries:
+                uac = get_attr(entry, 'userAccountControl', 0)
+                uac_parsed = parse_uac(uac)
+                
+                # Password age
+                pwd_last_set = get_attr(entry, 'pwdLastSet')
+                pwd_age_days = None
+                
+                if isinstance(pwd_last_set, datetime):
+                    if pwd_last_set.year != 1601:
+                        pwd_last_set_utc = pwd_last_set.replace(tzinfo=None) if pwd_last_set.tzinfo else pwd_last_set
+                        pwd_age_days = (now - pwd_last_set_utc).days
+                
+                # Last logon
+                last_logon = get_attr(entry, 'lastLogonTimestamp')
+                logon_age_days = None
+                last_logon_dt = None
+                
+                if isinstance(last_logon, datetime):
+                    if last_logon.year != 1601:
+                        last_logon_dt = last_logon
+                        last_logon_utc = last_logon.replace(tzinfo=None) if last_logon.tzinfo else last_logon
+                        logon_age_days = (now - last_logon_utc).days
+                
+                # Check if privileged
+                admin_count = get_attr(entry, 'adminCount', '')
+                is_privileged = str(admin_count) == '1'
+                
+                # Check for SPNs
+                spns = get_attr_list(entry, 'servicePrincipalName')
+                has_spn = len(spns) > 0
+                
+                # Risk assessment
+                risk_level = "Medium"
+                risk_factors = ["AS-REP Roasting vulnerable (no pre-authentication required)"]
+                
+                if is_privileged:
+                    risk_level = "CRITICAL"
+                    risk_factors.append("Privileged account (AdminCount=1)")
+                elif has_spn:
+                    risk_level = "HIGH"
+                    risk_factors.append("Has SPN (can also be Kerberoasted)")
+                
+                if pwd_age_days and pwd_age_days < 90:
+                    risk_factors.append("Password recently changed")
+                
+                # Get group memberships
+                member_of = get_attr_list(entry, 'memberOf')
+                groups = []
+                for group_dn in member_of:
+                    match = re.search(r'CN=([^,]+)', str(group_dn))
+                    if match:
+                        groups.append(match.group(1))
+                
+                results.append({
+                    "SAM Account Name": get_attr(entry, 'sAMAccountName', ''),
+                    "Name": get_attr(entry, 'name', ''),
+                    "Enabled": uac_parsed.get('Enabled', ''),
+                    "Risk Level": risk_level,
+                    "Risk Factors": "; ".join(risk_factors),
+                    "AdminCount": admin_count,
+                    "Has SPN": "Yes" if has_spn else "No",
+                    "Password Age (days)": pwd_age_days if pwd_age_days is not None else "Unknown",
+                    "Last Logon": format_datetime(last_logon_dt) if last_logon_dt else "Never",
+                    "Logon Age (days)": logon_age_days if logon_age_days is not None else "Unknown",
+                    "Member Of": "; ".join(groups[:5]) if groups else "None",
+                    "SID": sid_to_string(get_attr(entry, 'objectSid')),
+                    "Description": get_attr(entry, 'description', ''),
+                    "Info": get_attr(entry, 'info', ''),
+                    "Created": format_datetime(get_attr(entry, 'whenCreated')),
+                    "Distinguished Name": get_attr(entry, 'distinguishedName', ''),
+                })
+
+        except Exception as e:
+            logger.warning(f"Error collecting AS-REP roastable accounts: {e}")
+            logger.debug(f"Exception details: ", exc_info=True)
+
+        self.results['ASREPRoastable'] = results
+        logger.info(f"    Found {len(results)} AS-REP roastable accounts")
+        return results
+
+    def collect_kerberoastable(self) -> List[Dict]:
+        """Collect accounts vulnerable to Kerberoasting (user accounts with SPNs)."""
+        logger.info("[-] Collecting Kerberoastable Accounts...")
+        results = []
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        try:
+            # Find user accounts (not computers) with SPNs
+            filter_str = "(&(objectCategory=person)(objectClass=user)(servicePrincipalName=*)(!(sAMAccountName=krbtgt)))"
+            if self.config.only_enabled:
+                filter_str = "(&(objectCategory=person)(objectClass=user)(servicePrincipalName=*)(!(sAMAccountName=krbtgt))(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
+
+            entries = self.search(
+                self.base_dn,
+                filter_str,
+                ['sAMAccountName', 'name', 'distinguishedName', 'userAccountControl',
+                 'pwdLastSet', 'lastLogonTimestamp', 'adminCount', 'memberOf',
+                 'servicePrincipalName', 'msDS-SupportedEncryptionTypes', 
+                 'objectSid', 'description', 'info', 'whenCreated']
+            )
+
+            for entry in entries:
+                uac = get_attr(entry, 'userAccountControl', 0)
+                uac_parsed = parse_uac(uac)
+                
+                # Password age
+                pwd_last_set = get_attr(entry, 'pwdLastSet')
+                pwd_age_days = None
+                
+                if isinstance(pwd_last_set, datetime):
+                    if pwd_last_set.year != 1601:
+                        pwd_last_set_utc = pwd_last_set.replace(tzinfo=None) if pwd_last_set.tzinfo else pwd_last_set
+                        pwd_age_days = (now - pwd_last_set_utc).days
+                
+                # Last logon
+                last_logon = get_attr(entry, 'lastLogonTimestamp')
+                logon_age_days = None
+                last_logon_dt = None
+                
+                if isinstance(last_logon, datetime):
+                    if last_logon.year != 1601:
+                        last_logon_dt = last_logon
+                        last_logon_utc = last_logon.replace(tzinfo=None) if last_logon.tzinfo else last_logon
+                        logon_age_days = (now - last_logon_utc).days
+                
+                # SPNs
+                spns = get_attr_list(entry, 'servicePrincipalName')
+                spn_count = len(spns)
+                spns_str = "; ".join(spns[:3])  # Show first 3
+                if spn_count > 3:
+                    spns_str += f" ... ({spn_count} total)"
+                
+                # Kerberos encryption types
+                enc_types = get_attr(entry, 'msDS-SupportedEncryptionTypes')
+                kerb_enc = parse_kerb_enc_types(enc_types)
+                
+                # Check if privileged
+                admin_count = get_attr(entry, 'adminCount', '')
+                is_privileged = str(admin_count) == '1'
+                
+                # Risk assessment
+                risk_level = "Medium"
+                risk_factors = ["Kerberoastable (user account with SPN)"]
+                
+                if is_privileged:
+                    risk_level = "CRITICAL"
+                    risk_factors.append("Privileged account (AdminCount=1)")
+                
+                # Check encryption type - RC4 is easier to crack
+                rc4_val = kerb_enc.get('RC4', 'Not Set')
+                aes256_val = kerb_enc.get('AES256', 'Not Set')
+                if rc4_val in ['Supported', 'Default'] and aes256_val not in ['Supported', 'Default']:
+                    risk_level = "HIGH" if risk_level == "Medium" else risk_level
+                    risk_factors.append("Uses weak RC4 encryption (easier to crack)")
+                
+                if pwd_age_days and pwd_age_days > 365:
+                    risk_factors.append(f"Old password ({pwd_age_days} days)")
+                elif pwd_age_days and pwd_age_days < 90:
+                    risk_factors.append("Password recently changed")
+                
+                # Get group memberships
+                member_of = get_attr_list(entry, 'memberOf')
+                groups = []
+                for group_dn in member_of:
+                    match = re.search(r'CN=([^,]+)', str(group_dn))
+                    if match:
+                        groups.append(match.group(1))
+                
+                results.append({
+                    "SAM Account Name": get_attr(entry, 'sAMAccountName', ''),
+                    "Name": get_attr(entry, 'name', ''),
+                    "Enabled": uac_parsed.get('Enabled', ''),
+                    "Risk Level": risk_level,
+                    "Risk Factors": "; ".join(risk_factors),
+                    "SPN Count": spn_count,
+                    "Service Principal Names": spns_str,
+                    "AdminCount": admin_count,
+                    "Kerberos RC4": kerb_enc.get('RC4', 'Not Set'),
+                    "Kerberos AES-128": kerb_enc.get('AES128', 'Not Set'),
+                    "Kerberos AES-256": kerb_enc.get('AES256', 'Not Set'),
+                    "Password Age (days)": pwd_age_days if pwd_age_days is not None else "Unknown",
+                    "Last Logon": format_datetime(last_logon_dt) if last_logon_dt else "Never",
+                    "Logon Age (days)": logon_age_days if logon_age_days is not None else "Unknown",
+                    "Member Of": "; ".join(groups[:5]) if groups else "None",
+                    "SID": sid_to_string(get_attr(entry, 'objectSid')),
+                    "Description": get_attr(entry, 'description', ''),
+                    "Info": get_attr(entry, 'info', ''),
+                    "Created": format_datetime(get_attr(entry, 'whenCreated')),
+                    "Distinguished Name": get_attr(entry, 'distinguishedName', ''),
+                })
+
+        except Exception as e:
+            logger.warning(f"Error collecting Kerberoastable accounts: {e}")
+            logger.debug(f"Exception details: ", exc_info=True)
+
+        self.results['Kerberoastable'] = results
+        logger.info(f"    Found {len(results)} Kerberoastable accounts")
+        return results
+
     def collect_about(self) -> List[Dict]:
         """Collect metadata about the PyADRecon run."""
         logger.info("[-] Collecting About PyADRecon...")
@@ -4368,6 +4949,18 @@ class PyADRecon:
         if self.config.collect_adcs:
             self.collect_certificate_templates()
             self.collect_certificate_authorities()
+
+        if self.config.collect_protected_groups:
+            self.collect_protected_groups()
+
+        if self.config.collect_krbtgt:
+            self.collect_krbtgt()
+
+        if self.config.collect_asrep_roastable:
+            self.collect_asrep_roastable()
+
+        if self.config.collect_kerberoastable:
+            self.collect_kerberoastable()
 
         # Collect metadata about this run (always collect)
         self.collect_about()
@@ -4853,6 +5446,316 @@ class PyADRecon:
                         elif approval_cell.value in [False, "FALSE"]:
                             # Orange for no approval required (risky)
                             approval_cell.fill = orange_fill
+        
+        # Format Groups sheet
+        if "Groups" in wb.sheetnames:
+            ws = wb["Groups"]
+            if ws.max_row > 1:
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                for row_idx in range(2, ws.max_row + 1):
+                    # Highlight AdminCount (ORANGE - privileged group)
+                    if "AdminCount" in headers:
+                        admin_cell = ws.cell(row=row_idx, column=headers["AdminCount"])
+                        if admin_cell.value in [1, "1", True, "TRUE"]:
+                            admin_cell.fill = orange_fill
+                    
+                    # Highlight SIDHistory (RED - potential security risk, indicates domain migration or SID injection)
+                    if "SIDHistory" in headers:
+                        sid_history_cell = ws.cell(row=row_idx, column=headers["SIDHistory"])
+                        if sid_history_cell.value and str(sid_history_cell.value).strip() and str(sid_history_cell.value) != "":
+                            sid_history_cell.fill = red_fill
+        
+        # Format DomainControllers sheet
+        if "DomainControllers" in wb.sheetnames:
+            ws = wb["DomainControllers"]
+            if ws.max_row > 1:
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                for row_idx in range(2, ws.max_row + 1):
+                    # Highlight LDAP Signing (RED if not required)
+                    if "LDAP Signing" in headers:
+                        signing_cell = ws.cell(row=row_idx, column=headers["LDAP Signing"])
+                        if signing_cell.value in ["Not Required", "NOT REQUIRED", False, "FALSE"]:
+                            signing_cell.fill = red_fill
+                        elif signing_cell.value in ["Required", "REQUIRED", True, "TRUE"]:
+                            green_fill = PatternFill(start_color="B3FFB3", end_color="B3FFB3", fill_type="solid")
+                            signing_cell.fill = green_fill
+                    
+                    # Highlight LDAP Channel Binding (RED if not required)
+                    if "LDAP Channel Binding" in headers:
+                        binding_cell = ws.cell(row=row_idx, column=headers["LDAP Channel Binding"])
+                        if binding_cell.value in ["Not Required", "NOT REQUIRED", False, "FALSE"]:
+                            binding_cell.fill = red_fill
+                        elif binding_cell.value in ["Required", "REQUIRED", True, "TRUE"]:
+                            green_fill = PatternFill(start_color="B3FFB3", end_color="B3FFB3", fill_type="solid")
+                            binding_cell.fill = green_fill
+                    
+                    # Highlight SMB1 (RED if enabled - deprecated and insecure)
+                    if "SMB1(NT LM 0.12)" in headers:
+                        smb1_cell = ws.cell(row=row_idx, column=headers["SMB1(NT LM 0.12)"])
+                        if smb1_cell.value in [True, "TRUE"]:
+                            smb1_cell.fill = red_fill
+                    
+                    # Highlight SMB Signing (RED if not enabled)
+                    if "SMB Signing" in headers:
+                        signing_cell = ws.cell(row=row_idx, column=headers["SMB Signing"])
+                        if signing_cell.value in [False, "FALSE"]:
+                            signing_cell.fill = red_fill
+                        elif signing_cell.value in [True, "TRUE"]:
+                            green_fill = PatternFill(start_color="B3FFB3", end_color="B3FFB3", fill_type="solid")
+                            signing_cell.fill = green_fill
+        
+        # Format FineGrainedPasswordPolicy sheet
+        if "FineGrainedPasswordPolicy" in wb.sheetnames:
+            ws = wb["FineGrainedPasswordPolicy"]
+            if ws.max_row > 1:
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                for row_idx in range(2, ws.max_row + 1):
+                    # Highlight weak password policies (similar to PasswordPolicy sheet)
+                    if "Minimum Password Length" in headers:
+                        length_cell = ws.cell(row=row_idx, column=headers["Minimum Password Length"])
+                        try:
+                            length_val = int(length_cell.value) if length_cell.value else 0
+                            if length_val < 14:
+                                length_cell.fill = orange_fill
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # Highlight Reversible Encryption (RED if enabled)
+                    if "Reversible Encryption Enabled" in headers:
+                        rev_enc_cell = ws.cell(row=row_idx, column=headers["Reversible Encryption Enabled"])
+                        if rev_enc_cell.value in [True, "TRUE"]:
+                            rev_enc_cell.fill = red_fill
+                    
+                    # Highlight low lockout threshold
+                    if "Lockout Threshold" in headers:
+                        lockout_cell = ws.cell(row=row_idx, column=headers["Lockout Threshold"])
+                        try:
+                            lockout_val = int(lockout_cell.value) if lockout_cell.value else 0
+                            if lockout_val == 0 or lockout_val > 5:
+                                lockout_cell.fill = orange_fill
+                        except (ValueError, TypeError):
+                            pass
+        
+        # Format UserSPNs sheet
+        if "UserSPNs" in wb.sheetnames:
+            ws = wb["UserSPNs"]
+            if ws.max_row > 1:
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                for row_idx in range(2, ws.max_row + 1):
+                    # Highlight disabled accounts (YELLOW - informational)
+                    if "Enabled" in headers:
+                        enabled_cell = ws.cell(row=row_idx, column=headers["Enabled"])
+                        if enabled_cell.value in [False, "FALSE"]:
+                            enabled_cell.fill = yellow_fill
+        
+        # Format ComputerSPNs sheet
+        if "ComputerSPNs" in wb.sheetnames:
+            ws = wb["ComputerSPNs"]
+            if ws.max_row > 1:
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                for row_idx in range(2, ws.max_row + 1):
+                    # Highlight disabled accounts (YELLOW - informational)
+                    if "Enabled" in headers:
+                        enabled_cell = ws.cell(row=row_idx, column=headers["Enabled"])
+                        if enabled_cell.value in [False, "FALSE"]:
+                            enabled_cell.fill = yellow_fill
+        
+        # Format Domain sheet
+        if "Domain" in wb.sheetnames:
+            ws = wb["Domain"]
+            if ws.max_row > 1:
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                for row_idx in range(2, ws.max_row + 1):
+                    # Highlight Machine Account Quota (ORANGE if > 0, GREEN if 0)
+                    if "Machine Account Quota" in headers:
+                        quota_cell = ws.cell(row=row_idx, column=headers["Machine Account Quota"])
+                        try:
+                            quota_val = int(quota_cell.value) if quota_cell.value else -1
+                            if quota_val > 0:
+                                quota_cell.fill = orange_fill
+                            elif quota_val == 0:
+                                green_fill = PatternFill(start_color="B3FFB3", end_color="B3FFB3", fill_type="solid")
+                                quota_cell.fill = green_fill
+                        except (ValueError, TypeError):
+                            pass
+        
+        # Format ProtectedGroups sheet
+        if "ProtectedGroups" in wb.sheetnames:
+            ws = wb["ProtectedGroups"]
+            if ws.max_row > 1:  # Has data beyond header
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                # Apply formatting to data rows (skip header)
+                for row_idx in range(2, ws.max_row + 1):
+                    # Highlight Risk Level column
+                    if "Risk Level" in headers:
+                        risk_cell = ws.cell(row=row_idx, column=headers["Risk Level"])
+                        risk_value = str(risk_cell.value).upper() if risk_cell.value else ""
+                        
+                        if risk_value in ["CRITICAL", "HIGH"]:
+                            risk_cell.fill = red_fill
+                        elif risk_value == "MEDIUM":
+                            risk_cell.fill = orange_fill
+                        # Low risk remains uncolored (not a problem, just normal/expected)
+                    
+                    # Highlight In Protected Users Group column (GREEN when Yes, RED when No for high-risk accounts)
+                    if "In Protected Users Group" in headers and "Risk Level" in headers:
+                        protected_cell = ws.cell(row=row_idx, column=headers["In Protected Users Group"])
+                        risk_cell = ws.cell(row=row_idx, column=headers["Risk Level"])
+                        risk_value = str(risk_cell.value).upper() if risk_cell.value else ""
+                        
+                        if protected_cell.value in ["Yes", "YES", True, "TRUE"]:
+                            green_fill = PatternFill(start_color="B3FFB3", end_color="B3FFB3", fill_type="solid")
+                            protected_cell.fill = green_fill
+                        elif protected_cell.value in ["No", "NO", False, "FALSE"]:
+                            # Only highlight red for HIGH risk accounts not in Protected Users
+                            if risk_value in ["CRITICAL", "HIGH"]:
+                                protected_cell.fill = red_fill
+                            elif risk_value == "MEDIUM":
+                                protected_cell.fill = orange_fill
+        
+        # Format krbtgt sheet
+        if "krbtgt" in wb.sheetnames:
+            ws = wb["krbtgt"]
+            if ws.max_row > 1:  # Has data beyond header
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                # Apply formatting to data rows (skip header)
+                for row_idx in range(2, ws.max_row + 1):
+                    # Highlight Risk Level column
+                    if "Risk Level" in headers:
+                        risk_cell = ws.cell(row=row_idx, column=headers["Risk Level"])
+                        risk_value = str(risk_cell.value).upper() if risk_cell.value else ""
+                        
+                        if risk_value in ["CRITICAL", "HIGH"]:
+                            risk_cell.fill = red_fill
+                        elif risk_value == "MEDIUM":
+                            risk_cell.fill = orange_fill
+                        # Low risk remains uncolored (not a problem, just normal/expected)
+                    
+                    # Highlight Password Age Days if > 365 (CRITICAL)
+                    if "Password Age (Days)" in headers:
+                        age_cell = ws.cell(row=row_idx, column=headers["Password Age (Days)"])
+                        try:
+                            age_val = float(age_cell.value) if age_cell.value else 0
+                            if age_val > 365:
+                                age_cell.fill = red_fill
+                            elif age_val > 180:
+                                age_cell.fill = orange_fill
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # Highlight Supports RC4 (ORANGE - weak encryption)
+                    if "Supports RC4" in headers:
+                        rc4_cell = ws.cell(row=row_idx, column=headers["Supports RC4"])
+                        if rc4_cell.value in [True, "TRUE", "Yes", "YES"]:
+                            rc4_cell.fill = orange_fill
+        
+        # Format ASREPRoastable sheet
+        if "ASREPRoastable" in wb.sheetnames:
+            ws = wb["ASREPRoastable"]
+            if ws.max_row > 1:  # Has data beyond header
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                # Apply formatting to data rows (skip header)
+                for row_idx in range(2, ws.max_row + 1):
+                    # Highlight Risk Level column
+                    if "Risk Level" in headers:
+                        risk_cell = ws.cell(row=row_idx, column=headers["Risk Level"])
+                        risk_value = str(risk_cell.value).upper() if risk_cell.value else ""
+                        
+                        if risk_value in ["CRITICAL", "HIGH"]:
+                            risk_cell.fill = red_fill
+                        elif risk_value == "MEDIUM":
+                            risk_cell.fill = orange_fill
+                        # Low risk remains uncolored (not a problem, just normal/expected)
+                    
+                    # Highlight Does Not Require Pre Auth (always RED - critical vulnerability)
+                    if "Does Not Require Pre Auth" in headers:
+                        preauth_cell = ws.cell(row=row_idx, column=headers["Does Not Require Pre Auth"])
+                        if preauth_cell.value in [True, "TRUE", "Yes", "YES"]:
+                            preauth_cell.fill = red_fill
+                    
+                    # Highlight AdminCount (ORANGE - privileged account)
+                    if "AdminCount" in headers:
+                        admin_cell = ws.cell(row=row_idx, column=headers["AdminCount"])
+                        if admin_cell.value in [1, "1", True, "TRUE"]:
+                            admin_cell.fill = orange_fill
+        
+        # Format Kerberoastable sheet
+        if "Kerberoastable" in wb.sheetnames:
+            ws = wb["Kerberoastable"]
+            if ws.max_row > 1:  # Has data beyond header
+                headers = {cell.value: cell.column for cell in ws[1]}
+                
+                # Apply formatting to data rows (skip header)
+                for row_idx in range(2, ws.max_row + 1):
+                    # Highlight Risk Level column
+                    if "Risk Level" in headers:
+                        risk_cell = ws.cell(row=row_idx, column=headers["Risk Level"])
+                        risk_value = str(risk_cell.value).upper() if risk_cell.value else ""
+                        
+                        if risk_value in ["CRITICAL", "HIGH"]:
+                            risk_cell.fill = red_fill
+                        elif risk_value == "MEDIUM":
+                            risk_cell.fill = orange_fill
+                        # Low risk remains uncolored (not a problem, just normal/expected)
+                    
+                    # Highlight Supports RC4 (ORANGE - weak encryption, easier to crack)
+                    if "Supports RC4" in headers:
+                        rc4_cell = ws.cell(row=row_idx, column=headers["Supports RC4"])
+                        if rc4_cell.value in [True, "TRUE", "Yes", "YES"]:
+                            rc4_cell.fill = orange_fill
+                    
+                    # Highlight AdminCount (ORANGE - privileged account)
+                    if "AdminCount" in headers:
+                        admin_cell = ws.cell(row=row_idx, column=headers["AdminCount"])
+                        if admin_cell.value in [1, "1", True, "TRUE"]:
+                            admin_cell.fill = orange_fill
+                    
+                    # Highlight Password Never Expires (RED - critical, allows unlimited cracking time)
+                    if "Password Never Expires" in headers:
+                        pwd_cell = ws.cell(row=row_idx, column=headers["Password Never Expires"])
+                        if pwd_cell.value in [True, "TRUE", "Yes", "YES"]:
+                            pwd_cell.fill = red_fill
+
+    def apply_striped_formatting(self, wb):
+        """Apply striped row formatting (alternating light gray) to all data sheets.
+        This is applied after security formatting to preserve security highlights.
+        """
+        from openpyxl.styles import PatternFill
+        
+        stripe_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")  # Light gray
+        
+        logger.info("    Applying striped row formatting...")
+        
+        # Skip special sheets that don't need stripes or have custom formatting
+        skip_sheets = set()
+        
+        for sheet_name in wb.sheetnames:
+            if sheet_name in skip_sheets:
+                continue
+                
+            ws = wb[sheet_name]
+            if ws.max_row <= 1:  # Skip if only header or empty
+                continue
+            
+            # Apply stripe to every other row (starting from row 2, skipping header)
+            for row_idx in range(2, ws.max_row + 1):
+                # Only apply stripe to even rows
+                if row_idx % 2 == 0:
+                    for col_idx in range(1, ws.max_column + 1):
+                        cell = ws.cell(row=row_idx, column=col_idx)
+                        # Only apply stripe if cell doesn't already have a fill color from security formatting
+                        # Check if cell has no fill or has default fill
+                        if not cell.fill or cell.fill.start_color.rgb in ['00000000', None]:
+                            cell.fill = stripe_fill
 
     def export_xlsx(self, output_dir: str, domain_name: str = ""):
         """Export results to Excel file (optimized for large datasets)."""
@@ -4880,8 +5783,10 @@ class PyADRecon:
 
             # Define sheet order to match ADRecon
             SHEET_ORDER = [
-                'AboutPyADRecon', 'Users', 'UserSPNs', 'GroupMembers', 'Groups', 'OUs', 'Computers',
-                'ComputerSPNs', 'LAPS', 'gMSA', 'dMSA', 'ManagedServiceAccounts', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
+                'AboutPyADRecon', 'Users', 'UserSPNs',
+                'krbtgt', 'ProtectedGroups', 'ASREPRoastable', 'Kerberoastable',
+                'gMSA', 'dMSA', 'GroupMembers', 'Groups', 'OUs', 'Computers',
+                'ComputerSPNs', 'LAPS', 'ManagedServiceAccounts', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
                 'DomainControllers', 'CertificateTemplates', 'CertificateAuthorities',
                 'PasswordPolicy', 'FineGrainedPasswordPolicy',
                 'SchemaHistory', 'Sites', 'Domain', 'Forest'
@@ -5272,6 +6177,9 @@ class PyADRecon:
             # Apply security-based conditional formatting
             self.apply_security_formatting(wb)
             
+            # Apply striped row formatting to all sheets
+            self.apply_striped_formatting(wb)
+            
             wb.save(filename)
             wb.close()
 
@@ -5317,8 +6225,10 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
 
         # Define sheet order to match ADRecon
         SHEET_ORDER = [
-            'AboutPyADRecon', 'Users', 'UserSPNs', 'GroupMembers', 'Groups', 'OUs', 'Computers',
-            'ComputerSPNs', 'LAPS', 'gMSA', 'dMSA', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
+            'AboutPyADRecon', 'Users', 'UserSPNs',
+            'krbtgt', 'ProtectedGroups', 'ASREPRoastable', 'Kerberoastable',
+            'gMSA', 'dMSA', 'GroupMembers', 'Groups', 'OUs', 'Computers',
+            'ComputerSPNs', 'LAPS', 'Printers', 'DNSZones', 'DNSRecords', 'gPLinks', 'GPOs',
             'DomainControllers', 'CertificateTemplates', 'CertificateAuthorities',
             'PasswordPolicy', 'FineGrainedPasswordPolicy',
             'SchemaHistory', 'Sites', 'Domain', 'Forest'
@@ -5389,6 +6299,7 @@ def generate_excel_from_csv(csv_dir: str, output_file: str = None):
                 except StopIteration:
                     pass
                 
+                # Write data rows
                 for row in reader:
                     ws.append(row)
 
@@ -5993,6 +6904,10 @@ Examples:
         config.collect_gmsa = 'gmsa' in collect_modules or 'groupmanagedserviceaccounts' in collect_modules
         config.collect_dmsa = 'dmsa' in collect_modules or 'delegatedmanagedserviceaccounts' in collect_modules
         config.collect_adcs = 'adcs' in collect_modules or 'certificates' in collect_modules
+        config.collect_protected_groups = 'protectedgroups' in collect_modules or 'adminsd' in collect_modules
+        config.collect_krbtgt = 'krbtgt' in collect_modules
+        config.collect_asrep_roastable = 'asreproastable' in collect_modules or 'asrep' in collect_modules
+        config.collect_kerberoastable = 'kerberoastable' in collect_modules or 'kerberoast' in collect_modules
 
     # Create output directory
     if args.output:
