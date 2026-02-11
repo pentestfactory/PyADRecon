@@ -1,3 +1,10 @@
+## [0.11.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.10.2...v0.11.0) (2026-02-11)
+
+
+### Features
+
+* striped cells, new collection methods, show maq in domain tab ([de701f9](https://github.com/l4rm4nd/PyADRecon/commit/de701f9a532aad3ec65398e4bb2d49677f13d68e))
+
 ## [0.10.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.10.1...v0.10.2) (2026-02-10)
 
 
@@ -26,16 +33,4 @@
 ### Bug Fixes
 
 * improve laps parsing and display who can read Mcs-AdmPwd ([1cba961](https://github.com/l4rm4nd/PyADRecon/commit/1cba961d399bcb14a377166496d425d297b03c83))
-
-## [0.9.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.8.0...v0.9.0) (2026-02-09)
-
-
-### Features
-
-* add gMSA detection ([169665e](https://github.com/l4rm4nd/PyADRecon/commit/169665e9b6279bff50ad3ce938b5e5cb0a753740))
-
-
-### Bug Fixes
-
-* parsing and risk analysis for adcs ([17cbeb4](https://github.com/l4rm4nd/PyADRecon/commit/17cbeb419a71df5bc74b746a6792379850cc537f))
 
