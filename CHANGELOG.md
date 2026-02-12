@@ -1,3 +1,10 @@
+## [0.11.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.11.1...v0.11.2) (2026-02-12)
+
+
+### Bug Fixes
+
+* use PAT for release to trigger pypi release ([87261c7](https://github.com/l4rm4nd/PyADRecon/commit/87261c76c80d546f64fcea497b89e9407fa224d0))
+
 ## [0.11.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.11.0...v0.11.1) (2026-02-12)
 
 
@@ -26,11 +33,4 @@
 ### Bug Fixes
 
 * use empty workstation name instead of spoofing ([80329a9](https://github.com/l4rm4nd/PyADRecon/commit/80329a9a9ba7825bf7ee9b2d6ef04f1da76edf0a))
-
-## [0.10.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.9.1...v0.10.0) (2026-02-09)
-
-
-### Features
-
-* add logonWorkstation bypass via --workstation ([9bf02d3](https://github.com/l4rm4nd/PyADRecon/commit/9bf02d3d48ee8d76da305ed7b5ce3701c4cfdf00))
 
