@@ -1,0 +1,40 @@
+# pyproject.toml
+
+[build-system]
+requires = ["setuptools>=68", "setuptools-scm>=8", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyadrecon"
+dynamic = ["version"]
+description = "Python Active Directory Reconnaissance Tool (ADRecon port) with NTLM and Kerberos support."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "LRVT" }]
+keywords = ["active-directory", "active directory", "ad", "recon", "reconnaissance", "enum", "enumeration", "adrecon", "pyadrecon", "security", "audit", "pentest", "ldap", "kerberos", "adcs", "kerberoast"]
+
+dependencies = [
+  "ldap3>=2.9.1,<3",
+  "openpyxl>=3.1.5,<4",
+  "impacket>=0.13.0,<1",
+  "gssapi>=1.11.1,<2; sys_platform != 'win32'",
+  "winkerberos>=0.13.0,<1; sys_platform == 'win32'",
+]
+
+[project.urls]
+Homepage = "https://github.com/l4rm4nd/PyADRecon"
+Repository = "https://github.com/l4rm4nd/PyADRecon"
+Issues = "https://github.com/l4rm4nd/PyADRecon/issues"
+
+[project.scripts]
+pyadrecon = "pyadrecon:main"
+
+[tool.setuptools]
+py-modules = ["pyadrecon"]
+
+# Version comes from Git tags like v0.11.0. CI will build from the tag ref.
+[tool.setuptools_scm]
+tag_regex = "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"
+version_scheme = "release-branch-semver"
+local_scheme = "no-local-version"
