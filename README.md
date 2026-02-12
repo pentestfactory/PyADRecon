@@ -31,7 +31,7 @@ pip install -r requirements.txt
 [PyPi](https://pypi.org/project/PyADRecon/):
 
 ````bash
-pip install PyADRecon
+pipx install pyadrecon
 ````
 
 [BlackArch Linux](https://blackarch.org/):
