@@ -119,7 +119,14 @@ jobs:
 
       - name: Pull latest changes
         run: |
-          git pull origin main        
+          git pull origin main
+
+      - name: Inject version into pyadrecon.py
+        run: |
+          VERSION=${{ needs.changelog.outputs.tag }}
+          sed -i 's/VERSION = ".*"/VERSION = "'${VERSION}'"/' pyadrecon.py
+          echo "Updated VERSION to ${VERSION}"
+          grep 'VERSION = ' pyadrecon.py          
   
       - name: Debug Changelog Outputs
         run: echo ${{ needs.changelog.outputs.tag }}
