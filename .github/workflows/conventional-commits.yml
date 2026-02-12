@@ -126,7 +126,7 @@ jobs:
           VERSION=${{ needs.changelog.outputs.tag }}
           sed -i 's/VERSION = ".*"/VERSION = "'${VERSION}'"/' pyadrecon.py
           echo "Updated VERSION to ${VERSION}"
-          grep 'VERSION = ' pyadrecon.py          
+          grep 'VERSION = ' pyadrecon.py
   
       - name: Debug Changelog Outputs
         run: echo ${{ needs.changelog.outputs.tag }}
