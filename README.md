@@ -129,53 +129,60 @@ As default, PyADRecon runs all collection modules. They are referenced to as `de
 
 Though, you can freely select your own collection of modules to run:
 
+| Icon | Meaning |
+|------|---------|
+| 🛑 | Requires higher domain privileges |
+| ✅ | Requires low domain privileges |
+
 **Forest & Domain**
-- `forest`
-- `domain`
-- `trusts`
-- `sites`
-- `subnets`
-- `schema` or `schemahistory`
+- `forest` ✅
+- `domain` ✅
+- `trusts` ✅
+- `sites` ✅
+- `subnets` ✅
+- `schema` or `schemahistory` ✅
 
 **Domain Controllers**
-- `dcs` or `domaincontrollers`
+- `dcs` or `domaincontrollers` ✅
 
 **Users & Groups**
-- `users`
-- `userspns`
-- `groups`
-- `groupmembers`
-- `protectedgroups`
-- `krbtgt`
-- `asreproastable`
-- `kerberoastable`
+- `users` ✅
+- `userspns` ✅
+- `groups` ✅
+- `groupmembers` ✅
+- `protectedgroups` (beta) ✅
+- `krbtgt` ✅
+- `asreproastable` ✅
+- `kerberoastable` ✅
 
 **Computers & Printers**
-- `computers`
-- `computerspns`
-- `printers`
+- `computers` ✅
+- `computerspns` ✅
+- `printers` ✅
 
 **OUs & Group Policy**
-- `ous`
-- `gpos`
-- `gplinks`
+- `ous` ✅
+- `gpos` ✅
+- `gplinks` ✅
 
 **Passwords & Credentials**
-- `passwordpolicy`
-- `fgpp` or `finegrainedpasswordpolicy`
-- `laps`
-- `bitlocker`
+- `passwordpolicy` ✅
+- `fgpp` or `finegrainedpasswordpolicy` 🛑
+- `laps` 🛑
+- `bitlocker` 🛑
 
 **Managed Service Accounts**
-- `gmsa` or `groupmanagedserviceaccounts` (beta)
-- `dmsa` or `delegatedmanagedserviceaccounts` (beta)
+- `gmsa` or `groupmanagedserviceaccounts` (beta) ✅
+- `dmsa` or `delegatedmanagedserviceaccounts` (beta) ✅
+  - Only works for Windows Server 2025+ AD schema
 
 **Certificates**
-- `adcs` or `certificates` (beta)
+- `adcs` or `certificates` (beta) ✅
+  - Detects ESC1, ESC2, ESC3, ESC4 and ESC9
 
 **DNS**
-- `dnszones`
-- `dnsrecords`
+- `dnszones` ✅
+- `dnsrecords` ✅
 
 ## Acknowledgements
 
