@@ -1,4 +1,4 @@
-<img src=".github/pyadrecon.png" alt="pyadrecon" width="300"/>
+<img src="https://raw.githubusercontent.com/l4rm4nd/PyADRecon/refs/heads/main/.github/pyadrecon.png" alt="pyadrecon" width="300"/>
 
 Python3 implementation of an improved [ADRecon](https://github.com/sense-of-security/ADRecon) for Pentesters, Red and Blue Teams
 
