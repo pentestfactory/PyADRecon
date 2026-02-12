@@ -28,6 +28,12 @@ virtualenv venv && source venv/bin/activate
 pip install -r requirements.txt
 ````
 
+[PyPi](https://pypi.org/project/PyADRecon/):
+
+````bash
+pip install PyADRecon
+````
+
 [BlackArch Linux](https://blackarch.org/):
 
 ```bash
