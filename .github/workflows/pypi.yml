@@ -30,13 +30,19 @@ jobs:
           else
             echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
-          echo "Using ref: $(cat $GITHUB_OUTPUT)"
 
-      - name: Checkout ref
+      - name: Checkout repo (for tags)
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.ref.outputs.ref }}
           fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Checkout ref
+        run: |
+          echo "Using ref: ${{ steps.ref.outputs.ref }}"
+          git checkout "${{ steps.ref.outputs.ref }}"
 
       - name: Setup Python
         uses: actions/setup-python@v5
