@@ -1,3 +1,10 @@
+## [0.11.6](https://github.com/l4rm4nd/PyADRecon/compare/v0.11.5...v0.11.6) (2026-02-12)
+
+
+### Bug Fixes
+
+* trigger ci ([2956985](https://github.com/l4rm4nd/PyADRecon/commit/29569850faba0930663359c27c2dcd7c90041839))
+
 ## [0.11.5](https://github.com/l4rm4nd/PyADRecon/compare/v0.11.4...v0.11.5) (2026-02-12)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * use PAT for release to trigger pypi release ([87261c7](https://github.com/l4rm4nd/PyADRecon/commit/87261c76c80d546f64fcea497b89e9407fa224d0))
-
-## [0.11.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.11.0...v0.11.1) (2026-02-12)
-
-
-### Bug Fixes
-
-* trigger ci and test pypi release ([89d0e4e](https://github.com/l4rm4nd/PyADRecon/commit/89d0e4e9c9ec99a26c01defe1710e95a5f71d4e3))
 
