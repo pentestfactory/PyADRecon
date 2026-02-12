@@ -10,7 +10,8 @@ dynamic = ["version"]
 description = "Python Active Directory Reconnaissance Tool (ADRecon port) with NTLM and Kerberos support."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { file = "LICENSE" }
+license-files = ["LICENSE"]
+license = "MIT"
 authors = [{ name = "LRVT" }]
 keywords = ["active-directory", "active directory", "ad", "recon", "reconnaissance", "enum", "enumeration", "adrecon", "pyadrecon", "security", "audit", "pentest", "ldap", "kerberos", "adcs", "kerberoast"]
 
