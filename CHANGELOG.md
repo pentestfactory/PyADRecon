@@ -1,3 +1,10 @@
+## [0.11.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.11.0...v0.11.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* trigger ci and test pypi release ([89d0e4e](https://github.com/l4rm4nd/PyADRecon/commit/89d0e4e9c9ec99a26c01defe1710e95a5f71d4e3))
+
 ## [0.11.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.10.2...v0.11.0) (2026-02-11)
 
 
@@ -26,11 +33,4 @@
 ### Features
 
 * add logonWorkstation bypass via --workstation ([9bf02d3](https://github.com/l4rm4nd/PyADRecon/commit/9bf02d3d48ee8d76da305ed7b5ce3701c4cfdf00))
-
-## [0.9.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.9.0...v0.9.1) (2026-02-09)
-
-
-### Bug Fixes
-
-* improve laps parsing and display who can read Mcs-AdmPwd ([1cba961](https://github.com/l4rm4nd/PyADRecon/commit/1cba961d399bcb14a377166496d425d297b03c83))
 
