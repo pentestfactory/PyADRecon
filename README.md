@@ -131,8 +131,8 @@ Though, you can freely select your own collection of modules to run:
 
 | Icon | Meaning |
 |------|---------|
-| 🛑 | Requires higher domain privileges |
-| ✅ | Requires low domain privileges |
+| 🛑 | Requires administrative domain privileges (e.g. Domain Admins) |
+| ✅ | Requires regular domain privileges (e.g. Authenticated Users) |
 
 **Forest & Domain**
 - `forest` ✅
