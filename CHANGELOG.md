@@ -1,3 +1,10 @@
+## [0.11.5](https://github.com/l4rm4nd/PyADRecon/compare/v0.11.4...v0.11.5) (2026-02-12)
+
+
+### Bug Fixes
+
+* inject correct version into release ([931afb6](https://github.com/l4rm4nd/PyADRecon/commit/931afb6733a5300caf3d164bec996982b9fdd8d0))
+
 ## [0.11.4](https://github.com/l4rm4nd/PyADRecon/compare/v0.11.3...v0.11.4) (2026-02-12)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * trigger ci and test pypi release ([89d0e4e](https://github.com/l4rm4nd/PyADRecon/commit/89d0e4e9c9ec99a26c01defe1710e95a5f71d4e3))
-
-## [0.11.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.10.2...v0.11.0) (2026-02-11)
-
-
-### Features
-
-* striped cells, new collection methods, show maq in domain tab ([de701f9](https://github.com/l4rm4nd/PyADRecon/commit/de701f9a532aad3ec65398e4bb2d49677f13d68e))
 
