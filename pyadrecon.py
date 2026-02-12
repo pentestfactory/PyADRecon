@@ -6759,6 +6759,9 @@ Examples:
         """
     )
 
+    # Version argument
+    parser.add_argument('--version', action='version', version=f'PyADRecon {VERSION}')
+
     # Standalone Excel generation mode
     parser.add_argument('--generate-excel-from', metavar='CSV_DIR',
                        help='Generate Excel report from CSV directory (standalone mode, no AD connection needed)')

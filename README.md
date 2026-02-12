@@ -51,6 +51,7 @@ PyADRecon - Python Active Directory Reconnaissance Tool
 
 options:
   -h, --help            show this help message and exit
+  --version             show program's version number and exit  
   --generate-excel-from CSV_DIR
                         Generate Excel report from CSV directory (standalone mode, no AD connection needed)
   -dc, --domain-controller DOMAIN_CONTROLLER
