@@ -1,5 +1,3 @@
-# PyADRecon
-
 <img src=".github/pyadrecon.png" alt="pyadrecon" width="300"/>
 
 Python3 implementation of an improved [ADRecon](https://github.com/sense-of-security/ADRecon) for Pentesters, Red and Blue Teams
