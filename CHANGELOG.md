@@ -1,35 +1,86 @@
-## [0.13.3](https://github.com/l4rm4nd/PyADRecon/compare/v0.13.2...v0.13.3) (2026-02-22)
-
-
-### Bug Fixes
-
-* add EOL systemd detection ([81bdb7f](https://github.com/l4rm4nd/PyADRecon/commit/81bdb7f516a3023af08b7cab2be3b6242d68c174))
-
-## [0.13.2](https://github.com/l4rm4nd/PyADRecon/compare/v0.13.1...v0.13.2) (2026-02-22)
-
-
-### Bug Fixes
-
-* rework Foreign Security Principals in Privileged Groups ([50fe76e](https://github.com/l4rm4nd/PyADRecon/commit/50fe76e8674a79a84678947fde3d488a73e2f383))
-
-## [0.13.1](https://github.com/l4rm4nd/PyADRecon/compare/v0.13.0...v0.13.1) (2026-02-22)
-
-
-### Bug Fixes
-
-* detect delegation findings ([90aea4e](https://github.com/l4rm4nd/PyADRecon/commit/90aea4ef264f2f6e124bb1a8fe4c123f1ea63192))
-
-## [0.13.0](https://github.com/l4rm4nd/PyADRecon/compare/v0.12.14...v0.13.0) (2026-02-22)
+## 0.14.0 (2026-02-23)
 
 
 ### Features
 
-* paginated dashboard ([1ec081f](https://github.com/l4rm4nd/PyADRecon/commit/1ec081f906436060cede2ebed94854708e2a954c))
-
-## [0.12.14](https://github.com/l4rm4nd/PyADRecon/compare/v0.12.13...v0.12.14) (2026-02-22)
+* add adcs and esc detection ([4d85e0c](https://github.com/pentestfactory/PyADRecon/commit/4d85e0cd37b80129d86b5dc1115309ea575c26bb))
+* add dMSA; fixes [#3](https://github.com/pentestfactory/PyADRecon/issues/3) ([6490aa8](https://github.com/pentestfactory/PyADRecon/commit/6490aa8d7b7b46b6fa345c9d52628930f28d39e4))
+* add gMSA detection ([169665e](https://github.com/pentestfactory/PyADRecon/commit/169665e9b6279bff50ad3ce938b5e5cb0a753740))
+* add logonWorkstation bypass via --workstation ([9bf02d3](https://github.com/pentestfactory/PyADRecon/commit/9bf02d3d48ee8d76da305ed7b5ce3701c4cfdf00))
+* add user and computer stats; also fix cannot-change-password and reversible-password-encryption ([4164512](https://github.com/pentestfactory/PyADRecon/commit/416451289442c3e8782d15cd96e589fd6103dcc7))
+* auto-coloring of important things ([f7651cc](https://github.com/pentestfactory/PyADRecon/commit/f7651cc38ab8e61a131c0eb6dd8c99756f1dd301))
+* fix kerbeos auth and ldap channel binding ([9da2e05](https://github.com/pentestfactory/PyADRecon/commit/9da2e0566191c1fda0ccf662189c86773ce29228))
+* Implement dashboard generation toggle in arguments ([887ea40](https://github.com/pentestfactory/PyADRecon/commit/887ea403d7a30a21bbc8feaa67d58eccee88302d))
+* paginated dashboard ([1ec081f](https://github.com/pentestfactory/PyADRecon/commit/1ec081f906436060cede2ebed94854708e2a954c))
+* striped cells, new collection methods, show maq in domain tab ([de701f9](https://github.com/pentestfactory/PyADRecon/commit/de701f9a532aad3ec65398e4bb2d49677f13d68e))
+* support passing tgt for kerberos auth ([cf10787](https://github.com/pentestfactory/PyADRecon/commit/cf10787e5c4b958c1656d6bb4f13ffacb3e1f4f4))
+* working docker image and versioned ci pipeline ([b370033](https://github.com/pentestfactory/PyADRecon/commit/b37003380eb7297d769e3c570522ae8316b0e0dd))
 
 
 ### Bug Fixes
 
-* rename finding ([453536a](https://github.com/l4rm4nd/PyADRecon/commit/453536a5bf760db7ae28a759c5e11a77ee1adb1e))
+* ace parsing errors ([20bc72f](https://github.com/pentestfactory/PyADRecon/commit/20bc72f3ee97b40fa396030b9e49ea2a504740ef))
+* adcs acl permission error ([5c10964](https://github.com/pentestfactory/PyADRecon/commit/5c10964d650f13dac914b959cd8209628ed6d87c))
+* add --generate-dashboard-from support ([e4905ce](https://github.com/pentestfactory/PyADRecon/commit/e4905ce55616ea13e480f9c3c299542f07c3d312))
+* add --version cli flag ([734ab1b](https://github.com/pentestfactory/PyADRecon/commit/734ab1bee51637096d55ee67ed5fa1917938f5b9))
+* add domain join info in about tab ([ead80f1](https://github.com/pentestfactory/PyADRecon/commit/ead80f19521ebfc1c6a5e783e3aa527dae4e62f0))
+* add EOL systemd detection ([81bdb7f](https://github.com/pentestfactory/PyADRecon/commit/81bdb7f516a3023af08b7cab2be3b6242d68c174))
+* add forest_root_dn attribute to track forest root separately ([818acc8](https://github.com/pentestfactory/PyADRecon/commit/818acc8ce3bb26c1dd05ddd5b763cd8da7282339))
+* add ipv6 and ipv4 addresses from dns records to computer tab ([153f07d](https://github.com/pentestfactory/PyADRecon/commit/153f07d09018ea15c474b256ca46ffb5db25e11d))
+* add krbtgt rotation and protected users group to dashboard ([03e3046](https://github.com/pentestfactory/PyADRecon/commit/03e30466f1f1f9033e0aa3341dba7521f855a62e))
+* add laps readers to table and adjust maq text ([2586914](https://github.com/pentestfactory/PyADRecon/commit/25869149ce6a8c16923b3cace2bcb0e1e5db5025))
+* add manager approval to dashboard ([1716844](https://github.com/pentestfactory/PyADRecon/commit/17168444a95083828ddcf8e605f398f345562f9a))
+* add missing distinguished name ([2efe17a](https://github.com/pentestfactory/PyADRecon/commit/2efe17a3e25415679e743c621874c6bf07df83fa))
+* add requirements and trigger ci ([9ec03f3](https://github.com/pentestfactory/PyADRecon/commit/9ec03f33c7d0d56d2aed66454e4cab3edb9115c1))
+* adjust dockerfile for kerberos ([cdcf62d](https://github.com/pentestfactory/PyADRecon/commit/cdcf62d92bd6035b256f62150f6d70e07e850ab6))
+* adjust dockerfile, trigger ci ([3302466](https://github.com/pentestfactory/PyADRecon/commit/3302466ad214bec55b01f412793ee36ed07f7946))
+* adjust enabled coloring ([4ddba17](https://github.com/pentestfactory/PyADRecon/commit/4ddba1726b455ff7a9c2680fc56637e1afacba84))
+* always try ldaps first + adjust password age threshold ([f3b6c1c](https://github.com/pentestfactory/PyADRecon/commit/f3b6c1c2f632d3d8ca0ead344639674e799ea8d7))
+* catch acl permission errors for adcs templates and adjust risk rating ([8f83753](https://github.com/pentestfactory/PyADRecon/commit/8f837530644ecf2b66a1935825b725451e30414a))
+* column sorting bug ([d160142](https://github.com/pentestfactory/PyADRecon/commit/d160142e94d919421f5996c57e83187ac217a70b))
+* counter for security findings in navigation ([b856c3d](https://github.com/pentestfactory/PyADRecon/commit/b856c3d4395b093cb0545c8ed716aaed3f868223))
+* detect delegation findings ([90aea4e](https://github.com/pentestfactory/PyADRecon/commit/90aea4ef264f2f6e124bb1a8fe4c123f1ea63192))
+* detect passwords stored in desc and info + colorize ([3548770](https://github.com/pentestfactory/PyADRecon/commit/35487705840dcb7eb2f00e50fea8c55451522fc6))
+* dns record parsing ([35a8828](https://github.com/pentestfactory/PyADRecon/commit/35a8828ea5ca06d66d8171c191aeaa5c15df28e0))
+* dockerfile ([c36e4ca](https://github.com/pentestfactory/PyADRecon/commit/c36e4ca009aea50dc292a74b9db4183f52021fdc))
+* fix dockerfile and trigger ci ([7dd905a](https://github.com/pentestfactory/PyADRecon/commit/7dd905a4c947484086bf8737d96f4fd931d3dd12))
+* fixate py packages ([959b635](https://github.com/pentestfactory/PyADRecon/commit/959b63547dca8bbc699c81d60de2ecc66d8f343f))
+* forest-child enumeration and sid resolving ([10637ff](https://github.com/pentestfactory/PyADRecon/commit/10637ff68929c00b06df058b3720e26a20975774))
+* hide non-issue tiles and add maq finding ([9929546](https://github.com/pentestfactory/PyADRecon/commit/9929546c58bfe7d29d70e0ecf7be045bf244b2be))
+* improve laps parsing and display who can read Mcs-AdmPwd ([1cba961](https://github.com/pentestfactory/PyADRecon/commit/1cba961d399bcb14a377166496d425d297b03c83))
+* improve password policy parsing and display as (d h m s) ([9161f8c](https://github.com/pentestfactory/PyADRecon/commit/9161f8c925c768a301578575f7152fc7985b4cd2)), closes [#4](https://github.com/pentestfactory/PyADRecon/issues/4)
+* initialize sid mappings earlier to support individual --collect adcs runs ([b036a8f](https://github.com/pentestfactory/PyADRecon/commit/b036a8fde34eae88cb14e570f9feb92a4a0e0fb3))
+* inject correct version into release ([931afb6](https://github.com/pentestfactory/PyADRecon/commit/931afb6733a5300caf3d164bec996982b9fdd8d0))
+* make cell values left-aligned ([a5714d1](https://github.com/pentestfactory/PyADRecon/commit/a5714d114dcad71d366d82ba06efec152cff6341))
+* make dashboard more mobile friendly ([75d0609](https://github.com/pentestfactory/PyADRecon/commit/75d060947d8101958e3e1d93017415c0a941c51a))
+* parsing and risk analysis for adcs ([17cbeb4](https://github.com/pentestfactory/PyADRecon/commit/17cbeb419a71df5bc74b746a6792379850cc537f))
+* parsing logic for logon workstations column in users tab ([5a8b551](https://github.com/pentestfactory/PyADRecon/commit/5a8b5515261e71baa9c395ee3d3640b66babe57c))
+* pipeline ([d4caa98](https://github.com/pentestfactory/PyADRecon/commit/d4caa987a387f80f3f9d2f7f7c478ba5f83812fd))
+* pipeline to inject version into py script ([f48014d](https://github.com/pentestfactory/PyADRecon/commit/f48014d7dfce162edfd69304d708ca7a6c7fce25))
+* properly parse 0 value for password policies ([739fdb7](https://github.com/pentestfactory/PyADRecon/commit/739fdb704ead7983632639a874740cb7bd700a1b))
+* pull latest changes before release ([9e10cac](https://github.com/pentestfactory/PyADRecon/commit/9e10cacb7076f788693afc17aaa648fd7c32f149))
+* reduce docker image size and fix toc links + add pyadrecon version into excel ([745b4fd](https://github.com/pentestfactory/PyADRecon/commit/745b4fda5ff470b5076157a7c4490849ef881070))
+* refactor ESC9 detection ([9a58455](https://github.com/pentestfactory/PyADRecon/commit/9a584559bbf4fac26e71264b2c4126af6fee6670))
+* remove obsolete argparse --threads ([baed441](https://github.com/pentestfactory/PyADRecon/commit/baed441f1ed7aad74b86356fa9159c958a323cf7))
+* remove obsolete collection methods ([8adbeb9](https://github.com/pentestfactory/PyADRecon/commit/8adbeb944f50a537302dc8c26b88c7c04a1118eb))
+* rename finding ([453536a](https://github.com/pentestfactory/PyADRecon/commit/453536a5bf760db7ae28a759c5e11a77ee1adb1e))
+* rework Foreign Security Principals in Privileged Groups ([50fe76e](https://github.com/pentestfactory/PyADRecon/commit/50fe76e8674a79a84678947fde3d488a73e2f383))
+* rework protected users in dashboard ([b07d6e6](https://github.com/pentestfactory/PyADRecon/commit/b07d6e6e88c3ad7503a41e2fbfd83231ee9016be))
+* show detected cleartext pws in description/info fields ([d681224](https://github.com/pentestfactory/PyADRecon/commit/d6812246687d1c73af910dbc906b3a843cf7a7f1))
+* support windows and provide executable ([3d68b5a](https://github.com/pentestfactory/PyADRecon/commit/3d68b5a46e27d9457a416f81ed21e02cceac7d63))
+* timeformat for windows ([514da45](https://github.com/pentestfactory/PyADRecon/commit/514da4502ce4ce683c18e4aae189508c5a0df753))
+* toc sorting ([26e44d8](https://github.com/pentestfactory/PyADRecon/commit/26e44d889713edccb7e95d9029624d29768e10f7))
+* toc, about and printer tab ([f4d9ac5](https://github.com/pentestfactory/PyADRecon/commit/f4d9ac5cabb92c986835c4d92fab405113d96c71))
+* trigger ci ([96d940f](https://github.com/pentestfactory/PyADRecon/commit/96d940f30ee59ce374e87123f4e08d7e3479e494))
+* trigger ci ([2956985](https://github.com/pentestfactory/PyADRecon/commit/29569850faba0930663359c27c2dcd7c90041839))
+* trigger ci and test pypi release ([89d0e4e](https://github.com/pentestfactory/PyADRecon/commit/89d0e4e9c9ec99a26c01defe1710e95a5f71d4e3))
+* Update Dockerfile ([783e6ea](https://github.com/pentestfactory/PyADRecon/commit/783e6eab3f3396107f52c1183a135efaa5766561))
+* update footer ([a60f604](https://github.com/pentestfactory/PyADRecon/commit/a60f604a82ea0c5f0c8b7889c0a87af901256d75))
+* updated pw policy recommendations ([c9346cb](https://github.com/pentestfactory/PyADRecon/commit/c9346cb8bfd0c84cbf23b8163df07479af7e697d))
+* use empty workstation name instead of spoofing ([80329a9](https://github.com/pentestfactory/PyADRecon/commit/80329a9a9ba7825bf7ee9b2d6ef04f1da76edf0a))
+* use empty workstation name instead of spoofing ([1a3db5b](https://github.com/pentestfactory/PyADRecon/commit/1a3db5b627d1f40b81d3511164e76d052583513a))
+* use PAT for release to trigger pypi release ([87261c7](https://github.com/pentestfactory/PyADRecon/commit/87261c76c80d546f64fcea497b89e9407fa224d0))
+* use UTC timezone universally ([2c207fc](https://github.com/pentestfactory/PyADRecon/commit/2c207fce14ac9037e09c0a6c86788a16dbe68e95))
+* UTC timezone parsing ([72615a4](https://github.com/pentestfactory/PyADRecon/commit/72615a4f09bfb3aa11bdc4e9becfafe1b722180d))
+* version in release, tag and pypi ([9503eeb](https://github.com/pentestfactory/PyADRecon/commit/9503eeb225ed8d619114986f64f730939c2debe3))
 
